@@ -4,7 +4,7 @@
  * Reads config from ~/.config/proton-drive-sync/config.json
  */
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { xdgConfig } from 'xdg-basedir';
 
@@ -28,11 +28,19 @@ if (!xdgConfig) {
 const CONFIG_DIR = join(xdgConfig, 'proton-drive-sync');
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
 
+export { CONFIG_DIR, CONFIG_FILE };
+
+export function ensureConfigDir(): void {
+    if (!existsSync(CONFIG_DIR)) {
+        mkdirSync(CONFIG_DIR, { recursive: true });
+    }
+}
+
 // ============================================================================
 // Config Loading
 // ============================================================================
 
-function loadConfig(): Config {
+export function loadConfig(): Config {
     if (!existsSync(CONFIG_FILE)) {
         console.error(`Config file not found: ${CONFIG_FILE}`);
         console.error('Create it with: {"sync_dirs": ["/path/to/dir"]}');
@@ -73,5 +81,3 @@ function loadConfig(): Config {
         process.exit(1);
     }
 }
-
-export const config = loadConfig();
