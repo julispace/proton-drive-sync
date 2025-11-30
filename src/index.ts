@@ -3,6 +3,7 @@
  */
 
 import { realpathSync } from 'fs';
+import { basename } from 'path';
 import { program } from 'commander';
 import watchman from 'fb-watchman';
 import { input, password } from '@inquirer/prompts';
@@ -16,6 +17,7 @@ import {
 } from './auth.js';
 import { getStoredCredentials, storeCredentials, deleteStoredCredentials } from './keychain.js';
 import { appState, saveState } from './state.js';
+import { config } from './config.js';
 import { logger, enableVerbose } from './logger.js';
 import pRetry from 'p-retry';
 import type { ProtonDriveClient, ApiError } from './types.js';
@@ -32,13 +34,13 @@ interface FileChange {
     mtime_ms: number;
     exists: boolean;
     type: 'f' | 'd';
+    watchRoot: string; // Which watch root this change came from
 }
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const WATCH_DIR = realpathSync('./my_files');
 const SUB_NAME = 'proton-drive-sync';
 
 // Debounce time in ms - wait for rapid changes to settle
@@ -70,15 +72,14 @@ async function processChanges(): Promise<void> {
     if (isProcessing || !protonClient) return;
     isProcessing = true;
 
-    // DEBUG: Simulate slow sync to test rapid add/delete behavior
-    await new Promise((resolve) => setTimeout(resolve, 10000));
-
     // Take snapshot of current pending changes
     const changes = new Map(pendingChanges);
     pendingChanges.clear();
 
     for (const [path, change] of changes) {
-        const fullPath = `my_files/${path}`;
+        // Use the directory name as the prefix for the remote path
+        const dirName = basename(change.watchRoot);
+        const fullPath = `${dirName}/${path}`;
 
         try {
             if (change.exists) {
@@ -257,71 +258,89 @@ async function authenticateFromKeychain(): Promise<ProtonDriveClient> {
 // ============================================================================
 
 function setupWatchman(): void {
-    // Step 1: Find root (watch-project)
-    watchmanClient.command(['watch-project', WATCH_DIR], (err, resp) => {
-        if (err) {
-            logger.error(`Watchman error: ${err}`);
-            process.exit(1);
-        }
+    // Set up watches for all configured directories
+    for (const dir of config.sync_dirs) {
+        const watchDir = realpathSync(dir);
+        const subName = `${SUB_NAME}-${basename(watchDir)}`;
 
-        const watchResp = resp as watchman.WatchProjectResponse;
-        const root = watchResp.watch;
-        const relative = watchResp.relative_path || '';
-
-        // Step 2: Use saved clock or null for initial sync
-        const savedClock = appState.clock;
-
-        if (savedClock) {
-            logger.info('Resuming from last sync state...');
-        } else {
-            logger.info('First run - syncing all existing files...');
-        }
-
-        // Step 3: Build a subscription query
-        const sub: Record<string, unknown> = {
-            expression: ['anyof', ['type', 'f'], ['type', 'd']], // files and directories
-            fields: ['name', 'size', 'mtime_ms', 'exists', 'type'],
-        };
-
-        // Only set 'since' if we have a saved clock (otherwise get all files)
-        if (savedClock) {
-            sub.since = savedClock;
-        }
-
-        if (relative) {
-            sub.relative_root = relative;
-        }
-
-        // Step 4: Register subscription
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (watchmanClient as any).command(['subscribe', root, SUB_NAME, sub], (err: Error | null) => {
+        // Step 1: Find root (watch-project)
+        watchmanClient.command(['watch-project', watchDir], (err, resp) => {
             if (err) {
-                logger.error(`Subscribe error: ${err}`);
+                logger.error(`Watchman error for ${dir}: ${err}`);
                 process.exit(1);
             }
-            logger.info('Watching for file changes... (press Ctrl+C to exit)');
-        });
-    });
 
-    // Step 5: Listen for notifications
+            const watchResp = resp as watchman.WatchProjectResponse;
+            const root = watchResp.watch;
+            const relative = watchResp.relative_path || '';
+
+            // Step 2: Use saved clock for this directory or null for initial sync
+            const savedClock = appState.clocks[watchDir];
+
+            if (savedClock) {
+                logger.info(`Resuming ${dir} from last sync state...`);
+            } else {
+                logger.info(`First run - syncing all existing files in ${dir}...`);
+            }
+
+            // Step 3: Build a subscription query
+            const sub: Record<string, unknown> = {
+                expression: ['anyof', ['type', 'f'], ['type', 'd']], // files and directories
+                fields: ['name', 'size', 'mtime_ms', 'exists', 'type'],
+            };
+
+            // Only set 'since' if we have a saved clock (otherwise get all files)
+            if (savedClock) {
+                sub.since = savedClock;
+            }
+
+            if (relative) {
+                sub.relative_root = relative;
+            }
+
+            // Step 4: Register subscription
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (watchmanClient as any).command(
+                ['subscribe', root, subName, sub],
+                (err: Error | null) => {
+                    if (err) {
+                        logger.error(`Subscribe error for ${dir}: ${err}`);
+                        process.exit(1);
+                    }
+                    logger.info(`Watching ${dir} for changes...`);
+                }
+            );
+        });
+    }
+
+    // Step 5: Listen for notifications from all subscriptions
     watchmanClient.on('subscription', (resp: watchman.SubscriptionResponse) => {
-        if (resp.subscription !== SUB_NAME) return;
+        // Check if this is one of our subscriptions
+        if (!resp.subscription.startsWith(SUB_NAME)) return;
+
+        // Extract the watch root from the subscription name
+        const dirName = resp.subscription.replace(`${SUB_NAME}-`, '');
+        const watchRoot = config.sync_dirs.find((d) => basename(realpathSync(d)) === dirName) || '';
 
         // Save the clock from this notification for resume capability (skip in dry-run mode)
         const clock = (resp as unknown as { clock?: string }).clock;
+        const resolvedRoot = realpathSync(watchRoot);
         if (clock && !dryRun) {
-            appState.clock = clock;
+            appState.clocks[resolvedRoot] = clock;
             saveState(appState);
         }
 
         for (const file of resp.files) {
-            queueChange(file as unknown as FileChange);
+            const fileChange = file as unknown as Omit<FileChange, 'watchRoot'>;
+            queueChange({ ...fileChange, watchRoot: realpathSync(watchRoot) });
         }
     });
 
     // Step 6: Handle errors & shutdown
     watchmanClient.on('error', (e: Error) => logger.error(`Watchman error: ${e}`));
     watchmanClient.on('end', () => {});
+
+    logger.info('Watching for file changes... (press Ctrl+C to exit)');
 }
 
 // ============================================================================

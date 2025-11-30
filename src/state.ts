@@ -13,12 +13,17 @@ import { xdgState } from 'xdg-basedir';
 // ============================================================================
 
 export interface StateData {
-    clock: string | null;
+    /** State schema version */
+    version: number;
+    /** Per-directory clocks keyed by directory path */
+    clocks: Record<string, string>;
 }
 
 // ============================================================================
 // Constants
 // ============================================================================
+
+const STATE_VERSION = 1;
 
 if (!xdgState) {
     console.error('Could not determine XDG state directory');
@@ -34,12 +39,12 @@ const STATE_FILE = join(STATE_DIR, 'state.json');
 
 function loadState(): StateData {
     if (!existsSync(STATE_FILE)) {
-        return { clock: null };
+        return { version: STATE_VERSION, clocks: {} };
     }
     try {
         return JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
     } catch {
-        return { clock: null };
+        return { version: STATE_VERSION, clocks: {} };
     }
 }
 

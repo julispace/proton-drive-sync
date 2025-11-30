@@ -1,6 +1,6 @@
 # Proton Drive Sync
 
-A CLI tool that watches a local directory and syncs changes to Proton Drive in real-time using Facebook's Watchman.
+A CLI tool that watches local directories and syncs changes to Proton Drive in real-time using Facebook's Watchman.
 
 ## Requirements
 
@@ -16,6 +16,18 @@ pnpm install
 pnpm build
 pnpm link --global
 ```
+
+## Configuration
+
+Create a config file at `~/.config/proton-drive-sync/config.json`:
+
+```json
+{
+    "sync_dirs": ["/path/to/first/directory", "/path/to/second/directory"]
+}
+```
+
+Each directory in `sync_dirs` will be watched and synced to Proton Drive. Files are uploaded to a folder named after the directory basename (e.g., `/Users/me/Documents` syncs to `Documents/` in Proton Drive).
 
 ## Usage
 
@@ -38,7 +50,7 @@ proton-drive-sync --help
 
 This will:
 
-1. Watch the `my_files/` directory for changes
+1. Watch all configured directories for changes
 2. Automatically sync file/directory creates, updates, and deletes to Proton Drive
 
 Press `Ctrl+C` to stop watching.
