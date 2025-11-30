@@ -13,8 +13,10 @@
  */
 
 import watchman from 'fb-watchman';
-import { realpathSync } from 'fs';
+import { realpathSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import { input, password, confirm } from '@inquirer/prompts';
+import { xdgState } from 'xdg-basedir';
 import {
     ProtonAuth,
     createProtonHttpClient,
@@ -40,6 +42,10 @@ interface FileChange {
     type: 'f' | 'd';
 }
 
+interface StateData {
+    clock: string | null;
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -49,6 +55,38 @@ const SUB_NAME = 'proton-drive-sync';
 
 // Debounce time in ms - wait for rapid changes to settle
 const DEBOUNCE_MS = 500;
+
+// State file path
+if (!xdgState) {
+    console.error('Could not determine XDG state directory');
+    process.exit(1);
+}
+const STATE_DIR = join(xdgState, 'proton-drive-sync');
+const STATE_FILE = join(STATE_DIR, 'state.json');
+
+// ============================================================================
+// State Management
+// ============================================================================
+
+function loadState(): StateData {
+    if (!existsSync(STATE_FILE)) {
+        return { clock: null };
+    }
+    try {
+        return JSON.parse(readFileSync(STATE_FILE, 'utf-8'));
+    } catch {
+        return { clock: null };
+    }
+}
+
+function saveState(data: StateData): void {
+    if (!existsSync(STATE_DIR)) {
+        mkdirSync(STATE_DIR, { recursive: true });
+    }
+    writeFileSync(STATE_FILE, JSON.stringify(data, null, 2));
+}
+
+const appState = loadState();
 
 // ============================================================================
 // Watchman Client
@@ -252,44 +290,51 @@ function setupWatchman(): void {
         const root = watchResp.watch;
         const relative = watchResp.relative_path || '';
 
-        // Step 2: Get current clock to only subscribe to future changes
-        watchmanClient.command(['clock', root], (err, clockResp) => {
+        // Step 2: Use saved clock or null for initial sync
+        const savedClock = appState.clock;
+
+        if (savedClock) {
+            console.log('Resuming from last sync state...');
+        } else {
+            console.log('First run - syncing all existing files...');
+        }
+
+        // Step 3: Build a subscription query
+        const sub: Record<string, unknown> = {
+            expression: ['anyof', ['type', 'f'], ['type', 'd']], // files and directories
+            fields: ['name', 'size', 'mtime_ms', 'exists', 'type'],
+        };
+
+        // Only set 'since' if we have a saved clock (otherwise get all files)
+        if (savedClock) {
+            sub.since = savedClock;
+        }
+
+        if (relative) {
+            sub.relative_root = relative;
+        }
+
+        // Step 4: Register subscription
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (watchmanClient as any).command(['subscribe', root, SUB_NAME, sub], (err: Error | null) => {
             if (err) {
-                console.error('Failed to query clock:', err);
+                console.error('Subscribe error:', err);
                 process.exit(1);
             }
-
-            const clock = (clockResp as { clock: string }).clock;
-
-            // Step 3: Build a subscription query with time constraint
-            const sub: Record<string, unknown> = {
-                expression: ['anyof', ['type', 'f'], ['type', 'd']], // files and directories
-                fields: ['name', 'size', 'mtime_ms', 'exists', 'type'],
-                since: clock, // only get changes after this point
-            };
-
-            if (relative) {
-                sub.relative_root = relative;
-            }
-
-            // Step 4: Register subscription
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (watchmanClient as any).command(
-                ['subscribe', root, SUB_NAME, sub],
-                (err: Error | null) => {
-                    if (err) {
-                        console.error('Subscribe error:', err);
-                        process.exit(1);
-                    }
-                    console.log('Watching for file changes... (press Ctrl+C to exit)\n');
-                }
-            );
+            console.log('Watching for file changes... (press Ctrl+C to exit)\n');
         });
     });
 
     // Step 5: Listen for notifications
     watchmanClient.on('subscription', (resp: watchman.SubscriptionResponse) => {
         if (resp.subscription !== SUB_NAME) return;
+
+        // Save the clock from this notification for resume capability
+        const clock = (resp as unknown as { clock?: string }).clock;
+        if (clock) {
+            appState.clock = clock;
+            saveState(appState);
+        }
 
         for (const file of resp.files) {
             queueChange(file as unknown as FileChange);
