@@ -45,10 +45,10 @@ pnpm install
 pnpm link --global
 ```
 
-Then run directly with tsx (no build step required):
+Then run directly with `pnpm tsx` (no build step required):
 
 ```bash
-tsx src/index.ts sync
+pnpm tsx src/index.ts sync
 ```
 
 Or rebuild after changes:
