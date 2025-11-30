@@ -45,10 +45,11 @@ interface SrpResult {
     expectedServerProof: string;
 }
 
-interface AddressKey {
+interface AddressKeyInfo {
     ID: string;
     Primary: number;
-    key: openpgp.PrivateKey;
+    armoredKey: string;
+    passphrase: string;
 }
 
 interface AddressData {
@@ -56,7 +57,7 @@ interface AddressData {
     Email: string;
     Type: number;
     Status: number;
-    keys: AddressKey[];
+    keys: AddressKeyInfo[];
 }
 
 interface Session {
@@ -851,22 +852,18 @@ export class ProtonAuth {
                     }
 
                     if (addressKeyPassword) {
-                        const privateKey = await openpgp.readPrivateKey({
-                            armoredKey: key.PrivateKey,
-                        });
-                        const decryptedKey = await openpgp.decryptKey({
-                            privateKey,
-                            passphrase: addressKeyPassword,
-                        });
+                        // Store armored key and passphrase instead of decrypted key
+                        // This allows the SDK to decrypt using its own openpgp instance
                         addressData.keys.push({
                             ID: key.ID,
                             Primary: key.Primary,
-                            key: decryptedKey,
+                            armoredKey: key.PrivateKey,
+                            passphrase: addressKeyPassword,
                         });
                     }
                 } catch (error) {
                     console.warn(
-                        `Failed to decrypt address key ${key.ID}:`,
+                        `Failed to process address key ${key.ID}:`,
                         (error as Error).message
                     );
                 }
@@ -921,6 +918,23 @@ export class ProtonAuth {
             );
             this.session.user = userResponse.User;
 
+            // First, decrypt the user's primary key
+            const primaryUserKey = this.session.user?.Keys?.[0];
+            if (primaryUserKey && SaltedKeyPass) {
+                try {
+                    const privateKey = await openpgp.readPrivateKey({
+                        armoredKey: primaryUserKey.PrivateKey,
+                    });
+                    const decryptedKey = await openpgp.decryptKey({
+                        privateKey,
+                        passphrase: SaltedKeyPass,
+                    });
+                    this.session.primaryKey = decryptedKey;
+                } catch (error) {
+                    console.warn('Failed to decrypt primary user key:', (error as Error).message);
+                }
+            }
+
             // Fetch addresses
             const addressesResponse = await apiRequest<ApiResponse & { Addresses?: Address[] }>(
                 'GET',
@@ -943,20 +957,31 @@ export class ProtonAuth {
 
                 for (const key of address.Keys || []) {
                     try {
-                        const privateKey = await openpgp.readPrivateKey({
-                            armoredKey: key.PrivateKey,
-                        });
-                        const decryptedKey = await openpgp.decryptKey({
-                            privateKey,
-                            passphrase: SaltedKeyPass!,
-                        });
-                        addressData.keys.push({
-                            ID: key.ID,
-                            Primary: key.Primary,
-                            key: decryptedKey,
-                        });
+                        let addressKeyPassword: string | undefined;
+
+                        // If the key has a Token, decrypt it using the user's primary key
+                        if (key.Token && this.session.primaryKey) {
+                            const decryptedToken = await openpgp.decrypt({
+                                message: await openpgp.readMessage({ armoredMessage: key.Token }),
+                                decryptionKeys: this.session.primaryKey,
+                            });
+                            addressKeyPassword = decryptedToken.data as string;
+                        } else {
+                            // Fallback to the user's key password
+                            addressKeyPassword = SaltedKeyPass;
+                        }
+
+                        if (addressKeyPassword) {
+                            // Store armored key and passphrase instead of decrypted key
+                            addressData.keys.push({
+                                ID: key.ID,
+                                Primary: key.Primary,
+                                armoredKey: key.PrivateKey,
+                                passphrase: addressKeyPassword,
+                            });
+                        }
                     } catch (error) {
-                        console.warn(`Failed to decrypt key ${key.ID}:`, (error as Error).message);
+                        console.warn(`Failed to process key ${key.ID}:`, (error as Error).message);
                     }
                 }
 
@@ -1160,7 +1185,28 @@ export function createProtonHttpClient(session: Session): ProtonHttpClient {
 /**
  * Create a Proton account interface for the SDK
  */
-export function createProtonAccount(session: Session): ProtonAccount {
+export function createProtonAccount(
+    session: Session,
+    cryptoModule: OpenPGPCryptoInterface
+): ProtonAccount {
+    // Cache for decrypted keys to avoid re-decrypting on each call
+    const decryptedKeysCache = new Map<string, openpgp.PrivateKey>();
+
+    async function decryptAddressKeys(
+        keys: AddressKeyInfo[]
+    ): Promise<{ id: string; key: openpgp.PrivateKey }[]> {
+        const result: { id: string; key: openpgp.PrivateKey }[] = [];
+        for (const k of keys) {
+            let decryptedKey = decryptedKeysCache.get(k.ID);
+            if (!decryptedKey) {
+                decryptedKey = await cryptoModule.decryptKey(k.armoredKey, k.passphrase);
+                decryptedKeysCache.set(k.ID, decryptedKey);
+            }
+            result.push({ id: k.ID, key: decryptedKey });
+        }
+        return result;
+    }
+
     return {
         async getOwnPrimaryAddress(): Promise<OwnAddress> {
             const primaryAddress = session.addresses?.find((a) => a.Type === 1 && a.Status === 1);
@@ -1169,14 +1215,12 @@ export function createProtonAccount(session: Session): ProtonAccount {
             }
 
             const primaryKeyIndex = primaryAddress.keys.findIndex((k) => k.Primary === 1);
+            const keys = await decryptAddressKeys(primaryAddress.keys);
             return {
                 email: primaryAddress.Email,
                 addressId: primaryAddress.ID,
                 primaryKeyIndex: primaryKeyIndex >= 0 ? primaryKeyIndex : 0,
-                keys: primaryAddress.keys.map((k) => ({
-                    id: k.ID,
-                    key: k.key,
-                })),
+                keys,
             };
         },
 
@@ -1189,14 +1233,12 @@ export function createProtonAccount(session: Session): ProtonAccount {
             }
 
             const primaryKeyIndex = address.keys.findIndex((k) => k.Primary === 1);
+            const keys = await decryptAddressKeys(address.keys);
             return {
                 email: address.Email,
                 addressId: address.ID,
                 primaryKeyIndex: primaryKeyIndex >= 0 ? primaryKeyIndex : 0,
-                keys: address.keys.map((k) => ({
-                    id: k.ID,
-                    key: k.key,
-                })),
+                keys,
             };
         },
 
@@ -1466,15 +1508,21 @@ export function createOpenPGPCrypto(): OpenPGPCryptoInterface {
         async generateKey(
             passphrase: string
         ): Promise<{ privateKey: openpgp.PrivateKey; armoredKey: string }> {
-            const { privateKey } = await openpgp.generateKey({
+            // Generate an unencrypted key first
+            const { privateKey: decryptedKey } = await openpgp.generateKey({
                 type: 'ecc',
                 curve: 'curve25519' as openpgp.EllipticCurveName,
                 userIDs: [{ name: 'Drive', email: 'drive@proton.me' }],
-                passphrase,
                 format: 'object',
             });
-            const armoredKey = privateKey.armor();
-            return { privateKey, armoredKey };
+            // Encrypt the key with the passphrase for storage
+            const encryptedKey = await openpgp.encryptKey({
+                privateKey: decryptedKey,
+                passphrase,
+            });
+            const armoredKey = encryptedKey.armor();
+            // Return the DECRYPTED key for immediate use, and the ENCRYPTED armored key for storage
+            return { privateKey: decryptedKey, armoredKey };
         },
 
         async encryptArmored(

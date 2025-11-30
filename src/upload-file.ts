@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Proton Drive - List All Files
+ * Proton Drive - Upload File
  *
- * Lists all files in your Proton Drive.
+ * Uploads a local file to Proton Drive root folder.
+ * If a file with the same name exists, it will be overwritten with a new revision.
  */
 
+import { createReadStream, statSync } from 'fs';
+import { Readable } from 'stream';
+import { basename } from 'path';
 import { input, password, confirm } from '@inquirer/prompts';
 // @ts-expect-error - keychain doesn't have type definitions
 import keychain from 'keychain';
@@ -23,19 +27,10 @@ import {
 // Types
 // ============================================================================
 
-interface FileEntry {
-    type: 'file' | 'folder' | 'degraded';
-    path: string;
-    size?: number | null;
-}
-
 interface NodeData {
     name: string;
     uid: string;
-    type: string; // 'file' | 'folder' or other NodeType values
-    activeRevision?: {
-        claimedSize?: number;
-    };
+    type: string;
 }
 
 interface NodeResult {
@@ -50,9 +45,49 @@ interface RootFolderResult {
     error?: unknown;
 }
 
+interface UploadController {
+    pause(): void;
+    resume(): void;
+    completion(): Promise<string>;
+}
+
+interface FileUploader {
+    getAvailableName(): Promise<string>;
+    writeStream(
+        stream: ReadableStream,
+        thumbnails: [],
+        onProgress?: (uploadedBytes: number) => void
+    ): Promise<UploadController>;
+}
+
+interface FileRevisionUploader {
+    writeStream(
+        stream: ReadableStream,
+        thumbnails: [],
+        onProgress?: (uploadedBytes: number) => void
+    ): Promise<UploadController>;
+}
+
+interface UploadMetadata {
+    mediaType: string;
+    expectedSize: number;
+    modificationTime?: Date;
+}
+
 interface ProtonDriveClientType {
     iterateFolderChildren(folderUid: string): AsyncIterable<NodeResult>;
     getMyFilesRootFolder(): Promise<RootFolderResult>;
+    getFileUploader(
+        parentFolderUid: string,
+        name: string,
+        metadata: UploadMetadata,
+        signal?: AbortSignal
+    ): Promise<FileUploader>;
+    getFileRevisionUploader(
+        nodeUid: string,
+        metadata: UploadMetadata,
+        signal?: AbortSignal
+    ): Promise<FileRevisionUploader>;
 }
 
 interface StoredCredentials {
@@ -66,31 +101,26 @@ interface ApiError extends Error {
 }
 
 // ============================================================================
-// Keychain Helpers (uses macOS Keychain via security CLI)
+// Keychain Helpers
 // ============================================================================
 
 const KEYCHAIN_SERVICE = 'proton-drive-sync';
 const KEYCHAIN_ACCOUNT_PREFIX = 'proton-drive-sync:';
 
-// Promisify keychain methods
 const keychainGetPassword = promisify(keychain.getPassword).bind(keychain);
 const keychainSetPassword = promisify(keychain.setPassword).bind(keychain);
 const keychainDeletePassword = promisify(keychain.deletePassword).bind(keychain);
 
 async function getStoredCredentials(): Promise<StoredCredentials | null> {
     try {
-        // First, try to get the stored username
         const username = await keychainGetPassword({
             account: `${KEYCHAIN_ACCOUNT_PREFIX}username`,
             service: KEYCHAIN_SERVICE,
         });
-
-        // Then get the password for that user
         const pwd = await keychainGetPassword({
             account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
             service: KEYCHAIN_SERVICE,
         });
-
         return { username, password: pwd };
     } catch {
         return null;
@@ -98,14 +128,11 @@ async function getStoredCredentials(): Promise<StoredCredentials | null> {
 }
 
 async function storeCredentials(username: string, pwd: string): Promise<void> {
-    // Store username
     await keychainSetPassword({
         account: `${KEYCHAIN_ACCOUNT_PREFIX}username`,
         service: KEYCHAIN_SERVICE,
         password: username,
     });
-
-    // Store password
     await keychainSetPassword({
         account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
         service: KEYCHAIN_SERVICE,
@@ -120,60 +147,61 @@ async function deleteStoredCredentials(): Promise<void> {
             service: KEYCHAIN_SERVICE,
         });
     } catch {
-        // Ignore errors
+        // Ignore
     }
-
     try {
         await keychainDeletePassword({
             account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
             service: KEYCHAIN_SERVICE,
         });
     } catch {
-        // Ignore errors
+        // Ignore
     }
 }
 
 // ============================================================================
-// File Listing
+// Helpers
 // ============================================================================
 
-async function collectFilesRecursively(
+/**
+ * Convert a Node.js Readable stream to a Web ReadableStream
+ */
+function nodeStreamToWebStream(nodeStream: Readable): ReadableStream<Uint8Array> {
+    return new ReadableStream({
+        start(controller) {
+            nodeStream.on('data', (chunk: Buffer) => {
+                controller.enqueue(new Uint8Array(chunk));
+            });
+            nodeStream.on('end', () => {
+                controller.close();
+            });
+            nodeStream.on('error', (err) => {
+                controller.error(err);
+            });
+        },
+        cancel() {
+            nodeStream.destroy();
+        },
+    });
+}
+
+/**
+ * Find an existing file by name in a folder
+ */
+async function findFileByName(
     client: ProtonDriveClientType,
     folderUid: string,
-    path: string = ''
-): Promise<FileEntry[]> {
-    const results: FileEntry[] = [];
-
+    fileName: string
+): Promise<string | null> {
     for await (const node of client.iterateFolderChildren(folderUid)) {
-        if (!node.ok) {
-            results.push({
-                type: 'degraded',
-                path: path ? `${path}/<unable to decrypt>` : '<unable to decrypt>',
-            });
-            continue;
-        }
-
-        const nodeData = node.value!;
-        const fullPath = path ? `${path}/${nodeData.name}` : nodeData.name;
-
-        if (nodeData.type === 'folder') {
-            results.push({ type: 'folder', path: fullPath });
-            const children = await collectFilesRecursively(client, nodeData.uid, fullPath);
-            results.push(...children);
-        } else {
-            results.push({
-                type: 'file',
-                path: fullPath,
-                size: nodeData.activeRevision?.claimedSize ?? null,
-            });
+        if (node.ok && node.value?.name === fileName && node.value.type === 'file') {
+            return node.value.uid;
         }
     }
-
-    return results;
+    return null;
 }
 
-function formatSize(bytes: number | null | undefined): string {
-    if (typeof bytes !== 'number' || bytes === null) return 'unknown';
+function formatSize(bytes: number): string {
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let unitIndex = 0;
     let size = bytes;
@@ -189,13 +217,31 @@ function formatSize(bytes: number | null | undefined): string {
 // ============================================================================
 
 async function main(): Promise<void> {
+    const localFilePath = process.argv[2] || './my_files/file-to-add.txt';
+
+    // Check if file exists
+    let fileStat;
+    try {
+        fileStat = statSync(localFilePath);
+    } catch {
+        console.error(`Error: File not found: ${localFilePath}`);
+        process.exit(1);
+    }
+
+    const fileName = basename(localFilePath);
+    const fileSize = fileStat.size;
+
+    console.log(`Uploading: ${localFilePath}`);
+    console.log(`  Name: ${fileName}`);
+    console.log(`  Size: ${formatSize(fileSize)}`);
+    console.log();
+
     try {
         await initCrypto();
 
         let username: string;
         let pwd: string;
 
-        // Check for stored credentials in Keychain
         const storedCreds = await getStoredCredentials();
 
         if (storedCreds) {
@@ -209,7 +255,6 @@ async function main(): Promise<void> {
                 username = storedCreds.username;
                 pwd = storedCreds.password;
             } else {
-                // Ask if they want to enter new credentials
                 username = await input({ message: 'Proton username:' });
                 pwd = await password({ message: 'Password:' });
             }
@@ -223,7 +268,6 @@ async function main(): Promise<void> {
             process.exit(1);
         }
 
-        // Offer to save credentials if they're new
         if (!storedCreds || storedCreds.username !== username || storedCreds.password !== pwd) {
             const saveToKeychain = await confirm({
                 message: 'Save credentials to Keychain?',
@@ -231,7 +275,7 @@ async function main(): Promise<void> {
             });
 
             if (saveToKeychain) {
-                await deleteStoredCredentials(); // Remove old credentials first
+                await deleteStoredCredentials();
                 await storeCredentials(username, pwd);
                 console.log('Credentials saved to Keychain.');
             }
@@ -255,7 +299,7 @@ async function main(): Promise<void> {
 
         console.log(`Logged in as: ${session?.user?.Name || username}\n`);
 
-        // Load the SDK dynamically
+        // Load the SDK
         type SDKModule = typeof import('@protontech/drive-sdk');
         let sdk: SDKModule;
         try {
@@ -271,8 +315,6 @@ async function main(): Promise<void> {
         const account = createProtonAccount(session!, openPGPCryptoModule);
         const srpModuleInstance = createSrpModule();
 
-        // Our local interfaces are runtime-compatible with the SDK's interfaces
-        // but TypeScript sees them as different due to openpgp type re-exports
         const client: ProtonDriveClientType = new sdk.ProtonDriveClient({
             httpClient,
             entitiesCache: new sdk.MemoryCache(),
@@ -284,7 +326,8 @@ async function main(): Promise<void> {
             srpModule: srpModuleInstance,
         });
 
-        console.log('Fetching files...');
+        // Get root folder
+        console.log('Getting root folder...');
         const rootFolder = await client.getMyFilesRootFolder();
 
         if (!rootFolder.ok) {
@@ -292,29 +335,62 @@ async function main(): Promise<void> {
             process.exit(1);
         }
 
-        const files = await collectFilesRecursively(client, rootFolder.value!.uid);
+        const rootFolderUid = rootFolder.value!.uid;
 
-        console.log('\n=== My Files ===\n');
+        // Check if file already exists
+        console.log(`Checking if "${fileName}" already exists...`);
+        const existingFileUid = await findFileByName(client, rootFolderUid, fileName);
 
-        if (files.length === 0) {
-            console.log('  (empty)');
-        } else {
-            for (const file of files) {
-                if (file.type === 'degraded') {
-                    console.log(`[DEGRADED] ${file.path}`);
-                } else if (file.type === 'folder') {
-                    console.log(`[FOLDER]   ${file.path}/`);
-                } else {
-                    console.log(`[FILE]     ${file.path} (${formatSize(file.size)})`);
+        const metadata: UploadMetadata = {
+            mediaType: 'application/octet-stream',
+            expectedSize: fileSize,
+            modificationTime: fileStat.mtime,
+        };
+
+        let uploadController: UploadController;
+
+        if (existingFileUid) {
+            console.log(`File exists, uploading new revision...`);
+
+            const revisionUploader = await client.getFileRevisionUploader(
+                existingFileUid,
+                metadata
+            );
+
+            const nodeStream = createReadStream(localFilePath);
+            const webStream = nodeStreamToWebStream(nodeStream);
+
+            uploadController = await revisionUploader.writeStream(
+                webStream,
+                [],
+                (uploadedBytes) => {
+                    const percent = ((uploadedBytes / fileSize) * 100).toFixed(1);
+                    process.stdout.write(
+                        `\rUploading: ${formatSize(uploadedBytes)} / ${formatSize(fileSize)} (${percent}%)`
+                    );
                 }
-            }
+            );
+        } else {
+            console.log(`File doesn't exist, creating new file...`);
+
+            const fileUploader = await client.getFileUploader(rootFolderUid, fileName, metadata);
+
+            const nodeStream = createReadStream(localFilePath);
+            const webStream = nodeStreamToWebStream(nodeStream);
+
+            uploadController = await fileUploader.writeStream(webStream, [], (uploadedBytes) => {
+                const percent = ((uploadedBytes / fileSize) * 100).toFixed(1);
+                process.stdout.write(
+                    `\rUploading: ${formatSize(uploadedBytes)} / ${formatSize(fileSize)} (${percent}%)`
+                );
+            });
         }
 
-        const totalFiles = files.filter((f) => f.type === 'file').length;
-        const totalFolders = files.filter((f) => f.type === 'folder').length;
-
-        console.log('\n---');
-        console.log(`Total: ${totalFiles} files, ${totalFolders} folders`);
+        // Wait for completion
+        const nodeUid = await uploadController.completion();
+        console.log('\n');
+        console.log(`Upload complete!`);
+        console.log(`Node UID: ${nodeUid}`);
 
         await auth.logout();
     } catch (error) {
