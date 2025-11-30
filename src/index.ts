@@ -6,7 +6,13 @@ import { program } from 'commander';
 import { authCommand } from './cli/auth.js';
 import { configCommand } from './cli/config.js';
 import { resetCommand } from './cli/reset.js';
-import { serviceInstallCommand, serviceUninstallCommand } from './cli/service.js';
+import {
+    serviceInstallCommand,
+    serviceUninstallCommand,
+    serviceStopCommand,
+    serviceStartCommand,
+    serviceReloadCommand,
+} from './cli/service.js';
 import { syncCommand } from './cli/sync.js';
 
 program.name('proton-drive-sync').description('Sync local files to Proton Drive').version('1.0.0');
@@ -45,5 +51,17 @@ serviceCommand
     .command('uninstall')
     .description('Stop and uninstall the launchd service')
     .action(serviceUninstallCommand);
+
+serviceCommand.command('start').description('Start the service').action(serviceStartCommand);
+
+serviceCommand
+    .command('stop')
+    .description('Stop the service (will restart on next boot)')
+    .action(serviceStopCommand);
+
+serviceCommand
+    .command('reload')
+    .description('Reload the service (restarts to pick up config changes)')
+    .action(serviceReloadCommand);
 
 program.parse();

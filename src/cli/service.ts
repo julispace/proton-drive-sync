@@ -172,3 +172,75 @@ export function serviceUninstallCommand(): void {
     unlinkSync(PLIST_PATH);
     console.log('Service uninstalled.');
 }
+
+export function serviceStopCommand(): void {
+    if (process.platform !== 'darwin') {
+        console.error('Error: Service stop is only supported on macOS.');
+        process.exit(1);
+    }
+
+    // Stop the launchd service if it exists
+    if (existsSync(PLIST_PATH)) {
+        try {
+            execSync(`launchctl stop ${SERVICE_NAME}`, { stdio: 'ignore' });
+            console.log('Service stopped. It will restart on next boot.');
+        } catch {
+            // Ignore if not running
+        }
+    }
+
+    // Also kill any running proton-drive-sync processes
+    try {
+        execSync('pkill -f "proton-drive-sync.*sync"', { stdio: 'ignore' });
+    } catch {
+        // Ignore if no processes found
+    }
+
+    console.log('proton-drive-sync stopped.');
+}
+
+export function serviceStartCommand(): void {
+    if (process.platform !== 'darwin') {
+        console.error('Error: Service start is only supported on macOS.');
+        process.exit(1);
+    }
+
+    if (!existsSync(PLIST_PATH)) {
+        console.error('Service is not installed. Run `proton-drive-sync service install` first.');
+        process.exit(1);
+    }
+
+    try {
+        execSync(`launchctl start ${SERVICE_NAME}`, { stdio: 'ignore' });
+        console.log('Service started.');
+    } catch {
+        console.error('Failed to start service.');
+        process.exit(1);
+    }
+}
+
+export function serviceReloadCommand(): void {
+    if (process.platform !== 'darwin') {
+        console.error('Error: Service reload is only supported on macOS.');
+        process.exit(1);
+    }
+
+    if (!existsSync(PLIST_PATH)) {
+        console.error('Service is not installed. Run `proton-drive-sync service install` first.');
+        process.exit(1);
+    }
+
+    try {
+        execSync(`launchctl stop ${SERVICE_NAME}`, { stdio: 'ignore' });
+    } catch {
+        // Ignore if not running
+    }
+
+    try {
+        execSync(`launchctl start ${SERVICE_NAME}`, { stdio: 'ignore' });
+        console.log('Service reloaded.');
+    } catch {
+        console.error('Failed to reload service.');
+        process.exit(1);
+    }
+}
