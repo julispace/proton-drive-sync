@@ -7,7 +7,7 @@
 import { realpathSync } from 'fs';
 import { program } from 'commander';
 import watchman from 'fb-watchman';
-import { input, password, confirm } from '@inquirer/prompts';
+import { input, password } from '@inquirer/prompts';
 import {
     ProtonAuth,
     createProtonHttpClient,
@@ -134,51 +134,12 @@ function queueChange(file: FileChange): void {
 // Authentication
 // ============================================================================
 
-async function authenticate(): Promise<ProtonDriveClient> {
+/**
+ * Create a ProtonDriveClient from username/password
+ */
+async function createClient(username: string, pwd: string): Promise<ProtonDriveClient> {
     await initCrypto();
 
-    let username: string;
-    let pwd: string;
-
-    const storedCreds = await getStoredCredentials();
-
-    if (storedCreds) {
-        console.log(`Found stored credentials for: ${storedCreds.username}`);
-        const useStored = await confirm({
-            message: 'Use stored credentials?',
-            default: true,
-        });
-
-        if (useStored) {
-            username = storedCreds.username;
-            pwd = storedCreds.password;
-        } else {
-            username = await input({ message: 'Proton username:' });
-            pwd = await password({ message: 'Password:' });
-        }
-    } else {
-        username = await input({ message: 'Proton username:' });
-        pwd = await password({ message: 'Password:' });
-    }
-
-    if (!username || !pwd) {
-        throw new Error('Username and password are required.');
-    }
-
-    if (!storedCreds || storedCreds.username !== username || storedCreds.password !== pwd) {
-        const saveToKeychain = await confirm({
-            message: 'Save credentials to Keychain?',
-            default: true,
-        });
-
-        if (saveToKeychain) {
-            await deleteStoredCredentials();
-            await storeCredentials(username, pwd);
-            console.log('Credentials saved to Keychain.');
-        }
-    }
-
-    console.log('\nAuthenticating with Proton...');
     const auth = new ProtonAuth();
 
     let session;
@@ -193,8 +154,6 @@ async function authenticate(): Promise<ProtonDriveClient> {
             throw error;
         }
     }
-
-    console.log(`Logged in as: ${session?.user?.Name || username}\n`);
 
     // Load the SDK
     type SDKModule = typeof import('@protontech/drive-sdk');
@@ -228,6 +187,24 @@ async function authenticate(): Promise<ProtonDriveClient> {
     });
 
     return client as unknown as ProtonDriveClient;
+}
+
+/**
+ * Authenticate using stored credentials (for sync command)
+ */
+async function authenticateFromKeychain(): Promise<ProtonDriveClient> {
+    const storedCreds = await getStoredCredentials();
+
+    if (!storedCreds) {
+        console.error('No credentials found. Run `proton-drive-sync auth` first.');
+        process.exit(1);
+    }
+
+    console.log(`Authenticating as ${storedCreds.username}...`);
+    const client = await createClient(storedCreds.username, storedCreds.password);
+    console.log('Authenticated.\n');
+
+    return client;
 }
 
 // ============================================================================
@@ -306,9 +283,36 @@ function setupWatchman(): void {
 // Commands
 // ============================================================================
 
+async function authCommand(): Promise<void> {
+    await initCrypto();
+
+    const username = await input({ message: 'Proton username:' });
+    const pwd = await password({ message: 'Password:' });
+
+    if (!username || !pwd) {
+        console.error('Username and password are required.');
+        process.exit(1);
+    }
+
+    console.log('\nAuthenticating with Proton...');
+
+    // Verify credentials work
+    try {
+        await createClient(username, pwd);
+    } catch (error) {
+        console.error('Authentication failed:', (error as Error).message);
+        process.exit(1);
+    }
+
+    // Save to keychain
+    await deleteStoredCredentials();
+    await storeCredentials(username, pwd);
+    console.log('Credentials saved to Keychain.');
+}
+
 async function syncCommand(): Promise<void> {
-    // Authenticate first
-    protonClient = await authenticate();
+    // Authenticate using stored credentials
+    protonClient = await authenticateFromKeychain();
 
     // Then setup watchman
     setupWatchman();
@@ -326,6 +330,11 @@ async function syncCommand(): Promise<void> {
 // ============================================================================
 
 program.name('proton-drive-sync').description('Sync local files to Proton Drive').version('1.0.0');
+
+program
+    .command('auth')
+    .description('Authenticate and save credentials to Keychain')
+    .action(authCommand);
 
 program.command('sync').description('Watch and sync files to Proton Drive').action(syncCommand);
 
