@@ -215,19 +215,31 @@ async function findFileByName(
 }
 
 /**
- * Find an existing folder by name in a parent folder
+ * Find a folder by name in a parent folder.
+ * Returns the folder UID if found, null otherwise.
+ *
+ * Note: We iterate through ALL children even after finding a match to ensure
+ * the SDK's cache is marked as "children complete". The SDK only sets the
+ * `isFolderChildrenLoaded` flag after full iteration. If we exit early, the
+ * cache flag isn't set, and subsequent calls would hit the API again.
  */
 async function findFolderByName(
     client: ProtonDriveClientType,
     parentFolderUid: string,
     folderName: string
 ): Promise<string | null> {
+    let foundUid: string | null = null;
     for await (const node of client.iterateFolderChildren(parentFolderUid)) {
-        if (node.ok && node.value?.name === folderName && node.value.type === 'folder') {
-            return node.value.uid;
+        if (
+            !foundUid &&
+            node.ok &&
+            node.value?.type === 'folder' &&
+            node.value.name === folderName
+        ) {
+            foundUid = node.value.uid;
         }
     }
-    return null;
+    return foundUid;
 }
 
 /**
@@ -260,6 +272,10 @@ function getRemoteDirPath(localFilePath: string): string[] {
 /**
  * Ensure all directories in the path exist, creating them if necessary.
  * Returns the UID of the final (deepest) folder.
+ *
+ * This is O(d) API calls where d = path depth, which is unavoidable for tree traversal.
+ * Each level uses early-exit when the folder is found.
+ * Once we need to create a folder, all subsequent folders must be created (no more searching).
  */
 async function ensureRemotePath(
     client: ProtonDriveClientType,
@@ -267,24 +283,34 @@ async function ensureRemotePath(
     pathParts: string[]
 ): Promise<string> {
     let currentFolderUid = rootFolderUid;
+    let needToCreate = false;
 
     for (const folderName of pathParts) {
-        // Check if folder already exists
-        const existingFolderUid = await findFolderByName(client, currentFolderUid, folderName);
-
-        if (existingFolderUid) {
-            console.log(`  Found existing folder: ${folderName}`);
-            currentFolderUid = existingFolderUid;
-        } else {
-            // Create the folder
+        if (needToCreate) {
+            // Once we start creating, all subsequent folders need to be created
             console.log(`  Creating folder: ${folderName}`);
             const result = await client.createFolder(currentFolderUid, folderName);
-
             if (!result.ok) {
                 throw new Error(`Failed to create folder "${folderName}": ${result.error}`);
             }
-
             currentFolderUid = result.value!.uid;
+        } else {
+            // Search for existing folder (with early exit on match)
+            const existingFolderUid = await findFolderByName(client, currentFolderUid, folderName);
+
+            if (existingFolderUid) {
+                console.log(`  Found existing folder: ${folderName}`);
+                currentFolderUid = existingFolderUid;
+            } else {
+                // Folder doesn't exist, create it and all subsequent folders
+                console.log(`  Creating folder: ${folderName}`);
+                const result = await client.createFolder(currentFolderUid, folderName);
+                if (!result.ok) {
+                    throw new Error(`Failed to create folder "${folderName}": ${result.error}`);
+                }
+                currentFolderUid = result.value!.uid;
+                needToCreate = true; // All subsequent folders must be created
+            }
         }
     }
 
