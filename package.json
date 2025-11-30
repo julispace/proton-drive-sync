@@ -4,7 +4,7 @@
   "description": "Examples for using the Proton Drive SDK",
   "type": "module",
   "scripts": {
-    "postinstall": "cd sdk/js/sdk && pnpm install && pnpm build",
+    "postinstall": "cd sdk/js/sdk && npm pkg set pnpm.overrides.typescript='~5.6.3' && npm pkg set devDependencies.@types/node='^20' && pnpm install && pnpm build",
     "list-files": "node list-files.js"
   },
   "keywords": [

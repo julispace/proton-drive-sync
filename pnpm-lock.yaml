@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@protontech/drive-sdk':
-        specifier: link:../sdk/js/sdk
-        version: link:../sdk/js/sdk
+        specifier: link:./sdk/js/sdk
+        version: link:sdk/js/sdk
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
