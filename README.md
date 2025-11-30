@@ -16,7 +16,7 @@ pnpm install
 ## Run
 
 ```bash
-node src/list-files.js
+pnpm tsx src/list-files.ts
 ```
 
 Credentials are saved to your macOS Keychain after first login.

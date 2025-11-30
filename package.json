@@ -1,25 +1,39 @@
 {
-  "name": "proton-drive-examples",
-  "version": "1.0.0",
-  "description": "Examples for using the Proton Drive SDK",
-  "type": "module",
-  "scripts": {
-    "postinstall": "cd sdk/js/sdk && npm pkg set pnpm.overrides.typescript='~5.6.3' && npm pkg set devDependencies.@types/node='^20' && pnpm install && pnpm build",
-    "list-files": "node list-files.js"
-  },
-  "keywords": [
-    "proton",
-    "drive",
-    "sdk"
-  ],
-  "author": "",
-  "license": "ISC",
-  "packageManager": "pnpm@10.23.0",
-  "dependencies": {
-    "@inquirer/prompts": "^8.0.1",
-    "@protontech/drive-sdk": "link:./sdk/js/sdk",
-    "bcryptjs": "^3.0.3",
-    "keychain": "^1.5.0",
-    "openpgp": "^6.2.2"
-  }
+    "name": "proton-drive-examples",
+    "version": "1.0.0",
+    "description": "Examples for using the Proton Drive SDK",
+    "type": "module",
+    "scripts": {
+        "postinstall": "cd sdk/js/sdk && npm pkg set pnpm.overrides.typescript='~5.6.3' && npm pkg set devDependencies.@types/node='^20' && pnpm install && pnpm build",
+        "list-files": "tsx src/list-files.ts",
+        "prepare": "husky"
+    },
+    "keywords": [
+        "proton",
+        "drive",
+        "sdk"
+    ],
+    "author": "",
+    "license": "ISC",
+    "packageManager": "pnpm@10.23.0",
+    "dependencies": {
+        "@inquirer/prompts": "^8.0.1",
+        "@protontech/drive-sdk": "link:./sdk/js/sdk",
+        "bcryptjs": "^3.0.3",
+        "keychain": "^1.5.0",
+        "openpgp": "^6.2.2"
+    },
+    "devDependencies": {
+        "@eslint/js": "^9.39.1",
+        "@types/node": "^24.10.1",
+        "eslint": "^9.39.1",
+        "eslint-config-prettier": "^10.1.8",
+        "eslint-plugin-prettier": "^5.5.4",
+        "husky": "^9.1.7",
+        "lint-staged": "^16.2.7",
+        "prettier": "^3.7.3",
+        "tsx": "^4.20.6",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.48.0"
+    }
 }
