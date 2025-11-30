@@ -2,41 +2,71 @@
 
 A CLI tool that watches local directories and syncs changes to Proton Drive in real-time using Facebook's Watchman.
 
-## Requirements
+## Getting Started
 
-- [pnpm](https://pnpm.io/installation)
+### Requirements
+
+- Node.js >= 18
 - [Watchman](https://facebook.github.io/watchman/docs/install)
 
-## Installation
+### Installation
 
 ```bash
-git clone https://github.com/user/proton-drive-sync
-cd proton-drive-sync
-pnpm install
-pnpm build
-pnpm link --global
+npm install -g proton-drive-sync
 ```
 
-## Configuration
+### Authentication
 
-Create a config file at `~/.config/proton-drive-sync/config.json`:
+```bash
+proton-drive-sync auth
+```
+
+### Set Up Service (Optional)
+
+This installs both Watchman and proton-drive-sync as launchd services that start automatically on boot:
+
+```bash
+# Install the service
+proton-drive-sync service install
+
+# Uninstall the service
+proton-drive-sync service uninstall
+```
+
+### Configuration
+
+Run the config command to create and edit your config file:
+
+```bash
+proton-drive-sync config
+```
+
+This opens the config file at `~/.config/proton-drive-sync/config.json`:
 
 ```json
 {
-    "sync_dirs": ["/path/to/first/directory", "/path/to/second/directory"]
+    "sync_dirs": ["/path/to/first/directory", "/path/to/second/directory"],
+    "remote_root": "backups"
 }
 ```
 
-Each directory in `sync_dirs` will be watched and synced to Proton Drive. Files are uploaded to a folder named after the directory basename (e.g., `/Users/me/Documents` syncs to `Documents/` in Proton Drive).
+| Field         | Required | Description                                        |
+| ------------- | -------- | -------------------------------------------------- |
+| `sync_dirs`   | Yes      | Array of local directories to sync                 |
+| `remote_root` | No       | Remote folder prefix in Proton Drive (default: "") |
 
-## Usage
+Each directory in `sync_dirs` will be watched and synced to Proton Drive. Files are uploaded to a folder named after the directory basename (e.g., `/Users/me/Documents` syncs to `Documents/` in Proton Drive, or `backups/Documents/` if `remote_root` is set).
+
+## Other CLI Usage
+
+Apart from running as a service, this tool can be used as a CLI program:
 
 ```bash
-# Authenticate (first time only)
-proton-drive-sync auth
-
-# Start syncing
+# One-time sync
 proton-drive-sync sync
+
+# Watch for changes continuously (Ctrl+C to stop)
+proton-drive-sync sync --watch
 
 # Verbose output
 proton-drive-sync sync -v
@@ -48,23 +78,16 @@ proton-drive-sync sync --dry-run
 proton-drive-sync --help
 ```
 
-This will:
-
-1. Watch all configured directories for changes
-2. Automatically sync file/directory creates, updates, and deletes to Proton Drive
-
-Press `Ctrl+C` to stop watching.
-
 ## Development
 
-For an editable install (changes to source are reflected immediately):
-
 ```bash
+git clone https://github.com/damianb-bitflipper/proton-drive-sync
+cd proton-drive-sync
 pnpm install
 pnpm link --global
 ```
 
-Then run directly with `pnpm tsx` (no build step required):
+Run directly with `pnpm tsx` (no build step required):
 
 ```bash
 pnpm tsx src/index.ts sync
@@ -75,4 +98,19 @@ Or rebuild after changes:
 ```bash
 pnpm build
 proton-drive-sync sync
+```
+
+## Publishing
+
+To publish a new version to npm:
+
+```bash
+# Login to npm (if not already logged in)
+pnpm login
+
+# Build the package
+pnpm build
+
+# Publish to npm
+pnpm publish
 ```

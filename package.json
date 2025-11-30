@@ -1,13 +1,13 @@
 {
     "name": "proton-drive-sync",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "description": "Sync local files to Proton Drive",
     "type": "module",
     "bin": {
         "proton-drive-sync": "./dist/index.js"
     },
     "scripts": {
-        "preinstall": "node -e \"try{require('child_process').execSync('watchman version',{stdio:'ignore'})}catch{console.error('Error: Watchman is required.\\nInstall from: https://facebook.github.io/watchman/docs/install');process.exit(1)}\"",
+        "preinstall": "which watchman || (echo 'Error: Watchman is required. Install from: https://facebook.github.io/watchman/docs/install' && exit 1)",
         "build": "tsc",
         "build:check": "tsc --noEmit",
         "prepare": "husky"
@@ -17,8 +17,15 @@
         "drive",
         "sync"
     ],
-    "author": "",
+    "author": "damianb-bitflipper",
     "license": "ISC",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/damianb-bitflipper/proton-drive-sync"
+    },
+    "files": [
+        "dist"
+    ],
     "packageManager": "pnpm@10.23.0",
     "dependencies": {
         "@inquirer/prompts": "^8.0.1",

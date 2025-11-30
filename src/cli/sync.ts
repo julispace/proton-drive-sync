@@ -20,13 +20,20 @@ import type { ProtonDriveClient } from '../types.js';
 // Watchman Check
 // ============================================================================
 
-function checkWatchmanInstalled(): void {
-    try {
-        execSync('watchman version', { stdio: 'ignore' });
-    } catch {
-        console.error('Error: Watchman is not installed.');
-        console.error('Install it from: https://facebook.github.io/watchman/docs/install');
-        process.exit(1);
+async function waitForWatchman(maxAttempts = 30, delayMs = 1000): Promise<void> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            execSync('watchman version', { stdio: 'ignore' });
+            return;
+        } catch {
+            if (attempt === maxAttempts) {
+                console.error('Error: Watchman failed to start.');
+                console.error('Install it from: https://facebook.github.io/watchman/docs/install');
+                process.exit(1);
+            }
+            logger.debug(`Waiting for watchman to start (attempt ${attempt}/${maxAttempts})...`);
+            await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
     }
 }
 
@@ -404,8 +411,8 @@ export async function syncCommand(options: {
     dryRun: boolean;
     watch: boolean;
 }): Promise<void> {
-    // Check watchman is installed before doing anything
-    checkWatchmanInstalled();
+    // Wait for watchman to be ready
+    await waitForWatchman();
 
     if (options.verbose || options.dryRun) {
         enableVerbose();
