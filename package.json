@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "postinstall": "cd sdk/js/sdk && npm pkg set pnpm.overrides.typescript='~5.6.3' && npm pkg set devDependencies.@types/node='^20' && pnpm install && pnpm build",
-        "list-files": "tsx src/list-files.ts",
+        "sync": "tsx src/sync.ts",
         "prepare": "husky"
     },
     "keywords": [
