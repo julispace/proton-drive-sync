@@ -1,0 +1,18 @@
+{
+  "name": "proton-drive-examples",
+  "version": "1.0.0",
+  "description": "Examples for using the Proton Drive SDK",
+  "type": "module",
+  "scripts": {
+    "list-files": "node list-files.js"
+  },
+  "keywords": ["proton", "drive", "sdk"],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.23.0",
+  "dependencies": {
+    "@protontech/drive-sdk": "link:../sdk/js/sdk",
+    "openpgp": "^6.2.2",
+    "bcryptjs": "^3.0.3"
+  }
+}
