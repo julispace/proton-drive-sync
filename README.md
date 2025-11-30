@@ -28,9 +28,6 @@ This installs both Watchman and proton-drive-sync as launchd services that start
 ```bash
 # Install the service
 proton-drive-sync service install
-
-# Uninstall the service
-proton-drive-sync service uninstall
 ```
 
 ### Configuration
@@ -62,6 +59,9 @@ Each directory in `sync_dirs` will be watched and synced to Proton Drive. Files 
 Apart from running as a service, this tool can be used as a CLI program:
 
 ```bash
+# Show help
+proton-drive-sync --help
+
 # One-time sync
 proton-drive-sync sync
 
@@ -74,8 +74,8 @@ proton-drive-sync sync -v
 # Dry run (show what would sync without making changes)
 proton-drive-sync sync --dry-run
 
-# Show help
-proton-drive-sync --help
+# Uninstall the service
+proton-drive-sync service uninstall
 ```
 
 ## Development
