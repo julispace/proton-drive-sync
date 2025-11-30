@@ -16,10 +16,10 @@
   "license": "ISC",
   "packageManager": "pnpm@10.23.0",
   "dependencies": {
+    "@inquirer/prompts": "^8.0.1",
     "@protontech/drive-sdk": "link:./sdk/js/sdk",
     "bcryptjs": "^3.0.3",
-    "inquirer": "^13.0.1",
-    "keytar": "^7.9.0",
+    "keychain": "^1.5.0",
     "openpgp": "^6.2.2"
   }
 }

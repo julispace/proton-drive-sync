@@ -7,7 +7,8 @@
  */
 
 import { input, password, confirm } from '@inquirer/prompts';
-import keytar from 'keytar';
+import keychain from 'keychain';
+import { promisify } from 'util';
 import {
     ProtonAuth,
     createProtonHttpClient,
@@ -18,30 +19,70 @@ import {
 } from './auth.js';
 
 // ============================================================================
-// Keychain Helpers
+// Keychain Helpers (uses macOS Keychain via security CLI)
 // ============================================================================
 
 const KEYCHAIN_SERVICE = 'proton-drive-sync';
+const KEYCHAIN_ACCOUNT_PREFIX = 'proton-drive-sync:';
+
+// Promisify keychain methods
+const keychainGetPassword = promisify(keychain.getPassword).bind(keychain);
+const keychainSetPassword = promisify(keychain.setPassword).bind(keychain);
+const keychainDeletePassword = promisify(keychain.deletePassword).bind(keychain);
 
 async function getStoredCredentials() {
-    const credentials = await keytar.findCredentials(KEYCHAIN_SERVICE);
-    if (credentials.length > 0) {
-        return {
-            username: credentials[0].account,
-            password: credentials[0].password,
-        };
+    try {
+        // First, try to get the stored username
+        const username = await keychainGetPassword({
+            account: `${KEYCHAIN_ACCOUNT_PREFIX}username`,
+            service: KEYCHAIN_SERVICE,
+        });
+        
+        // Then get the password for that user
+        const pwd = await keychainGetPassword({
+            account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
+            service: KEYCHAIN_SERVICE,
+        });
+        
+        return { username, password: pwd };
+    } catch {
+        return null;
     }
-    return null;
 }
 
 async function storeCredentials(username, pwd) {
-    await keytar.setPassword(KEYCHAIN_SERVICE, username, pwd);
+    // Store username
+    await keychainSetPassword({
+        account: `${KEYCHAIN_ACCOUNT_PREFIX}username`,
+        service: KEYCHAIN_SERVICE,
+        password: username,
+    });
+    
+    // Store password
+    await keychainSetPassword({
+        account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
+        service: KEYCHAIN_SERVICE,
+        password: pwd,
+    });
 }
 
 async function deleteStoredCredentials() {
-    const credentials = await keytar.findCredentials(KEYCHAIN_SERVICE);
-    for (const cred of credentials) {
-        await keytar.deletePassword(KEYCHAIN_SERVICE, cred.account);
+    try {
+        await keychainDeletePassword({
+            account: `${KEYCHAIN_ACCOUNT_PREFIX}username`,
+            service: KEYCHAIN_SERVICE,
+        });
+    } catch {
+        // Ignore errors
+    }
+    
+    try {
+        await keychainDeletePassword({
+            account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
+            service: KEYCHAIN_SERVICE,
+        });
+    } catch {
+        // Ignore errors
     }
 }
 
