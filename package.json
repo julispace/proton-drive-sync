@@ -7,21 +7,21 @@
         "proton-drive-sync": "./dist/index.js"
     },
     "scripts": {
-        "postinstall": "cd sdk/js/sdk && npm pkg set pnpm.overrides.typescript='~5.6.3' && npm pkg set devDependencies.@types/node='^20' && pnpm install && pnpm build",
         "build": "tsc",
+        "build:check": "tsc --noEmit",
         "prepare": "husky"
     },
     "keywords": [
         "proton",
         "drive",
-        "sdk"
+        "sync"
     ],
     "author": "",
     "license": "ISC",
     "packageManager": "pnpm@10.23.0",
     "dependencies": {
         "@inquirer/prompts": "^8.0.1",
-        "@protontech/drive-sdk": "link:./sdk/js/sdk",
+        "@protontech/drive-sdk": "^0.7.0",
         "bcryptjs": "^3.0.3",
         "commander": "^14.0.2",
         "fb-watchman": "^2.0.2",

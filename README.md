@@ -10,7 +10,7 @@ A CLI tool that watches a local directory and syncs changes to Proton Drive in r
 ## Installation
 
 ```bash
-git clone --recursive https://github.com/user/proton-drive-sync
+git clone https://github.com/user/proton-drive-sync
 cd proton-drive-sync
 pnpm install
 pnpm build
@@ -20,8 +20,17 @@ pnpm link --global
 ## Usage
 
 ```bash
+# Authenticate (first time only)
+proton-drive-sync auth
+
 # Start syncing
 proton-drive-sync sync
+
+# Verbose output
+proton-drive-sync sync -v
+
+# Dry run (show what would sync without making changes)
+proton-drive-sync sync --dry-run
 
 # Show help
 proton-drive-sync --help
@@ -29,10 +38,8 @@ proton-drive-sync --help
 
 This will:
 
-1. Prompt for your Proton credentials (with optional 2FA)
-2. Save credentials to your macOS Keychain for future use
-3. Watch the `my_files/` directory for changes
-4. Automatically sync file/directory creates, updates, and deletes to Proton Drive
+1. Watch the `my_files/` directory for changes
+2. Automatically sync file/directory creates, updates, and deletes to Proton Drive
 
 Press `Ctrl+C` to stop watching.
 
