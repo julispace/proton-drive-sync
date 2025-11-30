@@ -142,8 +142,6 @@ function formatSize(bytes) {
 // Main
 // ============================================================================
 
-const DEBUG = true; // Set to false to disable debug logging
-
 async function main() {
     try {
         await initCrypto();
@@ -174,23 +172,6 @@ async function main() {
 
         console.log(`Logged in as: ${session.user?.Name || username}\n`);
 
-        if (DEBUG) {
-            console.log('[DEBUG] Session info:');
-            console.log('[DEBUG]   UID:', session.UID);
-            console.log('[DEBUG]   UserID:', session.UserID);
-            console.log('[DEBUG]   Scope:', session.Scope);
-            console.log('[DEBUG]   User.Name:', session.user?.Name);
-            console.log('[DEBUG]   User.DisplayName:', session.user?.DisplayName);
-            console.log('[DEBUG]   User.Email:', session.user?.Email);
-            console.log('[DEBUG]   User.Subscribed:', session.user?.Subscribed);
-            console.log('[DEBUG]   User.Services:', session.user?.Services);
-            console.log('[DEBUG]   User.DriveEarlyAccess:', session.user?.DriveEarlyAccess);
-            console.log('[DEBUG]   Addresses count:', session.addresses?.length);
-            console.log('[DEBUG]   Has keyPassword:', !!session.keyPassword);
-            console.log('[DEBUG]   Has primaryKey:', !!session.primaryKey);
-            console.log('');
-        }
-
         // Load the SDK
         let ProtonDriveClient, MemoryCache;
         try {
@@ -203,8 +184,8 @@ async function main() {
             process.exit(1);
         }
 
-        const httpClient = createProtonHttpClient(session, { debug: DEBUG });
-        const account = createProtonAccount(session, { debug: DEBUG });
+        const httpClient = createProtonHttpClient(session);
+        const account = createProtonAccount(session);
         const srpModule = createSrpModule();
         const openPGPCryptoModule = createOpenPGPCrypto();
 
@@ -223,12 +204,6 @@ async function main() {
         if (!rootFolder.ok) {
             console.error('Failed to get root folder:', rootFolder.error);
             process.exit(1);
-        }
-
-        if (DEBUG) {
-            console.log('\n[DEBUG] Root folder response:');
-            console.log('[DEBUG]   rootFolder.ok:', rootFolder.ok);
-            console.log('[DEBUG]   rootFolder.value:', JSON.stringify(rootFolder.value, null, 2));
         }
 
         const files = await collectFilesRecursively(client, rootFolder.value.uid);
