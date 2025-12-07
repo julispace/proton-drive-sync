@@ -459,6 +459,9 @@ export async function processNextJob(client: ProtonDriveClient, dryRun: boolean)
       );
       markJobBlocked(id, localPath, errorMessage, dryRun);
     } else if (errorCategory === ErrorCategory.DRAFT_REVISION && nRetries >= maxRetries) {
+      // Proton drive sometimes gets its internal draft revision state corrupted if
+      // an upload failed or there was some race condition during uploading. In this case
+      // simply delete the node and recreate it seems to fix the issue
       logger.warn(
         `Job ${id} (${localPath}) hit max draft revision retries (${maxRetries}), deleting and recreating`
       );
