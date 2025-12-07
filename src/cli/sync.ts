@@ -13,6 +13,7 @@ import { loadConfig, type Config } from '../config.js';
 import { logger, enableVerbose } from '../logger.js';
 import { createClient } from './auth.js';
 import { createNode } from '../create.js';
+import { SYNC_PROCESS_PATTERN, hasSignal, consumeSignal } from '../signals.js';
 import { deleteNode } from '../delete.js';
 import type { ProtonDriveClient } from '../types.js';
 
@@ -412,7 +413,7 @@ function setupWatchmanDaemon(config: Config): void {
 // Command
 // ============================================================================
 
-export async function syncCommand(options: {
+export async function startCommand(options: {
     verbose: boolean;
     dryRun: boolean;
     watch: boolean;
@@ -421,8 +422,10 @@ export async function syncCommand(options: {
     await waitForWatchman();
 
     // Check if another proton-drive-sync instance is already running
+    // Use a specific pattern that matches the actual sync command, not unrelated processes
+    // that happen to have proton-drive-sync in their path
     try {
-        const result = execSync('pgrep -f "proton-drive-sync.*sync"', { encoding: 'utf-8' });
+        const result = execSync(`pgrep -f "${SYNC_PROCESS_PATTERN}"`, { encoding: 'utf-8' });
         const pids = result
             .trim()
             .split('\n')
@@ -461,8 +464,20 @@ export async function syncCommand(options: {
         // Daemon mode: use subscriptions and keep running
         setupWatchmanDaemon(config);
 
+        // Check for stop signal every second
+        const stopSignalCheck = setInterval(() => {
+            if (hasSignal('stop')) {
+                consumeSignal('stop');
+                logger.info('Stop signal received. Shutting down...');
+                clearInterval(stopSignalCheck);
+                watchmanClient.end();
+                process.exit(0);
+            }
+        }, 1000);
+
         // Handle graceful shutdown
         process.on('SIGINT', () => {
+            clearInterval(stopSignalCheck);
             logger.info('Shutting down...');
             watchmanClient.end();
             process.exit(0);

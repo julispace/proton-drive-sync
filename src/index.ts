@@ -15,7 +15,7 @@ import {
     serviceReloadCommand,
     stopCommand,
 } from './cli/service.js';
-import { syncCommand } from './cli/sync.js';
+import { startCommand } from './cli/sync.js';
 
 program.name('proton-drive-sync').description('Sync local files to Proton Drive').version('1.0.0');
 
@@ -33,12 +33,12 @@ program
     .action(resetCommand);
 
 program
-    .command('sync')
-    .description('Sync changes to Proton Drive')
+    .command('start')
+    .description('Start syncing changes to Proton Drive')
     .option('-v, --verbose', 'Enable verbose output to console')
     .option('-n, --dry-run', 'Show what would be synced without making changes')
     .option('-w, --watch', 'Keep running and watch for changes')
-    .action(syncCommand);
+    .action(startCommand);
 
 program
     .command('stop')

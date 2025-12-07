@@ -7,6 +7,7 @@ import { execSync } from 'child_process';
 import { join } from 'path';
 import { homedir } from 'os';
 import * as readline from 'readline';
+import { sendSignal, hasSignal, consumeSignal, killSyncProcesses } from '../signals.js';
 
 function askYesNo(question: string): Promise<boolean> {
     const rl = readline.createInterface({
@@ -88,7 +89,7 @@ function generateSyncPlist(binPath: string): string {
     <key>ProgramArguments</key>
     <array>
         <string>${binPath}</string>
-        <string>sync</string>
+        <string>start</string>
         <string>--watch</string>
     </array>
     <key>EnvironmentVariables</key>
@@ -218,30 +219,37 @@ export function serviceUninstallCommand(): void {
 }
 
 /**
- * Stop the sync process gracefully.
- * Uses launchctl stop if running as a service (won't trigger auto-restart since KeepAlive.SuccessfulExit is false).
- * Falls back to pkill for manually started processes.
+ * Stop the sync process gracefully by sending a stop signal.
+ * The daemon will detect this signal and exit cleanly (exit code 0),
+ * which means launchd won't restart it (due to KeepAlive.SuccessfulExit: false).
  */
 export function stopCommand(): void {
-    // If running as a launchd service, use launchctl stop for graceful shutdown
-    // This won't trigger auto-restart since KeepAlive.SuccessfulExit is false
-    if (existsSync(PLIST_PATH)) {
-        try {
-            execSync(`launchctl stop ${SERVICE_NAME}`, { stdio: 'ignore' });
+    // Send stop signal to the daemon
+    sendSignal('stop');
+    console.log('Stop signal sent. Waiting for daemon to exit...');
+
+    // Wait for up to 5 seconds for the daemon to exit
+    const startTime = Date.now();
+    const timeout = 5000;
+    const checkInterval = 100;
+
+    const waitForExit = (): void => {
+        // Check if signal was consumed (daemon processed it and exited)
+        if (!hasSignal('stop')) {
             console.log('proton-drive-sync stopped.');
             return;
-        } catch {
-            // Service might not be loaded, fall through to pkill
         }
-    }
 
-    // Fallback: kill any running proton-drive-sync processes started manually
-    try {
-        execSync('pkill -f "proton-drive-sync.*sync"', { stdio: 'ignore' });
-        console.log('proton-drive-sync stopped.');
-    } catch {
-        console.log('No running proton-drive-sync process found.');
-    }
+        if (Date.now() - startTime < timeout) {
+            setTimeout(waitForExit, checkInterval);
+        } else {
+            // Timeout - consume signal and report
+            consumeSignal('stop');
+            console.log('No running proton-drive-sync daemon found (or it did not respond).');
+        }
+    };
+
+    waitForExit();
 }
 
 export function serviceUnloadCommand(): void {
@@ -260,11 +268,7 @@ export function serviceUnloadCommand(): void {
     }
 
     // Kill any straggler processes
-    try {
-        execSync('pkill -f "proton-drive-sync.*sync"', { stdio: 'ignore' });
-    } catch {
-        // Ignore if no process found
-    }
+    killSyncProcesses();
 
     console.log('Service stopped and unloaded. Run `proton-drive-sync service start` to restart.');
 }

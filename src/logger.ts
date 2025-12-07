@@ -7,7 +7,10 @@
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import winston from 'winston';
-import { STATE_DIR } from './state.js';
+import { xdgState } from 'xdg-basedir';
+
+// Define state directory here to avoid circular dependency with state.ts
+const STATE_DIR = join(xdgState!, 'proton-drive-sync');
 
 // Ensure state directory exists for log file
 if (!existsSync(STATE_DIR)) {
