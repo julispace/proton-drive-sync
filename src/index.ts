@@ -10,11 +10,12 @@ import { resetCommand } from './cli/reset.js';
 import {
     serviceInstallCommand,
     serviceUninstallCommand,
-    serviceStopCommand,
-    serviceStartCommand,
+    serviceUnloadCommand,
+    serviceLoadCommand,
     serviceReloadCommand,
+    stopCommand,
 } from './cli/service.js';
-import { syncCommand, stopCommand } from './cli/sync.js';
+import { syncCommand } from './cli/sync.js';
 
 program.name('proton-drive-sync').description('Sync local files to Proton Drive').version('1.0.0');
 
@@ -64,12 +65,12 @@ serviceCommand
     .description('Stop and uninstall the launchd service')
     .action(serviceUninstallCommand);
 
-serviceCommand.command('load').description('Load the service').action(serviceStartCommand);
+serviceCommand.command('load').description('Load the service').action(serviceLoadCommand);
 
 serviceCommand
     .command('unload')
     .description('Unload the service (will reload on next boot)')
-    .action(serviceStopCommand);
+    .action(serviceUnloadCommand);
 
 serviceCommand
     .command('reload')

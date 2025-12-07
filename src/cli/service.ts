@@ -7,7 +7,6 @@ import { execSync } from 'child_process';
 import { join } from 'path';
 import { homedir } from 'os';
 import * as readline from 'readline';
-import { stopCommand } from './sync.js';
 
 function askYesNo(question: string): Promise<boolean> {
     const rl = readline.createInterface({
@@ -218,7 +217,34 @@ export function serviceUninstallCommand(): void {
     console.log('Service uninstalled.');
 }
 
-export function serviceStopCommand(): void {
+/**
+ * Stop the sync process gracefully.
+ * Uses launchctl stop if running as a service (won't trigger auto-restart since KeepAlive.SuccessfulExit is false).
+ * Falls back to pkill for manually started processes.
+ */
+export function stopCommand(): void {
+    // If running as a launchd service, use launchctl stop for graceful shutdown
+    // This won't trigger auto-restart since KeepAlive.SuccessfulExit is false
+    if (existsSync(PLIST_PATH)) {
+        try {
+            execSync(`launchctl stop ${SERVICE_NAME}`, { stdio: 'ignore' });
+            console.log('proton-drive-sync stopped.');
+            return;
+        } catch {
+            // Service might not be loaded, fall through to pkill
+        }
+    }
+
+    // Fallback: kill any running proton-drive-sync processes started manually
+    try {
+        execSync('pkill -f "proton-drive-sync.*sync"', { stdio: 'ignore' });
+        console.log('proton-drive-sync stopped.');
+    } catch {
+        console.log('No running proton-drive-sync process found.');
+    }
+}
+
+export function serviceUnloadCommand(): void {
     if (process.platform !== 'darwin') {
         console.error('Error: Service stop is only supported on macOS.');
         process.exit(1);
@@ -233,13 +259,17 @@ export function serviceStopCommand(): void {
         }
     }
 
-    // Also kill any running proton-drive-sync processes
-    stopCommand();
+    // Kill any straggler processes
+    try {
+        execSync('pkill -f "proton-drive-sync.*sync"', { stdio: 'ignore' });
+    } catch {
+        // Ignore if no process found
+    }
 
-    console.log('Run `proton-drive-sync service load` to restart.');
+    console.log('Service stopped and unloaded. Run `proton-drive-sync service start` to restart.');
 }
 
-export function serviceStartCommand(): void {
+export function serviceLoadCommand(): void {
     if (process.platform !== 'darwin') {
         console.error('Error: Service start is only supported on macOS.');
         process.exit(1);

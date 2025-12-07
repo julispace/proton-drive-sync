@@ -420,6 +420,23 @@ export async function syncCommand(options: {
     // Wait for watchman to be ready
     await waitForWatchman();
 
+    // Check if another proton-drive-sync instance is already running
+    try {
+        const result = execSync('pgrep -f "proton-drive-sync.*sync"', { encoding: 'utf-8' });
+        const pids = result
+            .trim()
+            .split('\n')
+            .filter((pid) => pid && parseInt(pid) !== process.pid);
+        if (pids.length > 0) {
+            console.error(
+                'Error: Another proton-drive-sync instance is already running. Run `proton-drive-sync stop` first.'
+            );
+            process.exit(1);
+        }
+    } catch {
+        // pgrep returns non-zero if no processes found, which is fine
+    }
+
     if (options.verbose || options.dryRun) {
         enableVerbose();
     }
@@ -454,15 +471,5 @@ export async function syncCommand(options: {
         // One-shot mode: query for changes, process, and exit
         await runOneShotSync(config);
         watchmanClient.end();
-    }
-}
-
-export function stopCommand(): void {
-    // Kill any running proton-drive-sync processes regardless of how they were started
-    try {
-        execSync('pkill -f "proton-drive-sync.*sync"', { stdio: 'ignore' });
-        console.log('proton-drive-sync stopped.');
-    } catch {
-        console.log('No running proton-drive-sync process found.');
     }
 }
