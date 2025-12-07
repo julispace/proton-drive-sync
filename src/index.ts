@@ -38,6 +38,7 @@ program
     .option('-v, --verbose', 'Enable verbose output to console')
     .option('-n, --dry-run', 'Show what would be synced without making changes')
     .option('-w, --watch', 'Keep running and watch for changes')
+    .option('-d, --daemon', 'Run as daemon (requires --watch, enables stop signal handling)')
     .action(startCommand);
 
 program

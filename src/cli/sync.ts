@@ -13,7 +13,7 @@ import { loadConfig, type Config } from '../config.js';
 import { logger, enableVerbose } from '../logger.js';
 import { createClient } from './auth.js';
 import { createNode } from '../create.js';
-import { SYNC_PROCESS_PATTERN, hasSignal, consumeSignal } from '../signals.js';
+import { hasSignal, consumeSignal, isAlreadyRunning } from '../signals.js';
 import { deleteNode } from '../delete.js';
 import type { ProtonDriveClient } from '../types.js';
 
@@ -417,27 +417,23 @@ export async function startCommand(options: {
     verbose: boolean;
     dryRun: boolean;
     watch: boolean;
+    daemon: boolean;
 }): Promise<void> {
+    // Validate: --daemon requires --watch
+    if (options.daemon && !options.watch) {
+        console.error('Error: --daemon (-d) requires --watch (-w)');
+        process.exit(1);
+    }
+
     // Wait for watchman to be ready
     await waitForWatchman();
 
     // Check if another proton-drive-sync instance is already running
-    // Use a specific pattern that matches the actual sync command, not unrelated processes
-    // that happen to have proton-drive-sync in their path
-    try {
-        const result = execSync(`pgrep -f "${SYNC_PROCESS_PATTERN}"`, { encoding: 'utf-8' });
-        const pids = result
-            .trim()
-            .split('\n')
-            .filter((pid) => pid && parseInt(pid) !== process.pid);
-        if (pids.length > 0) {
-            console.error(
-                'Error: Another proton-drive-sync instance is already running. Run `proton-drive-sync stop` first.'
-            );
-            process.exit(1);
-        }
-    } catch {
-        // pgrep returns non-zero if no processes found, which is fine
+    if (isAlreadyRunning(true)) {
+        console.error(
+            'Error: Another proton-drive-sync instance is already running. Run `proton-drive-sync stop` first.'
+        );
+        process.exit(1);
     }
 
     if (options.verbose || options.dryRun) {
@@ -461,7 +457,7 @@ export async function startCommand(options: {
     protonClient = await authenticateFromKeychain();
 
     if (watchMode) {
-        // Daemon mode: use subscriptions and keep running
+        // Watch mode: use subscriptions and keep running
         setupWatchmanDaemon(config);
 
         // Check for stop signal every second

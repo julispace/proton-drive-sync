@@ -17,11 +17,28 @@ import { appState, saveState } from './state.js';
 
 const STATE_FILE = join(xdgState!, 'proton-drive-sync', 'state.json');
 
-export const SYNC_PROCESS_PATTERN = 'proton-drive-sync\\S* sync';
+export const SYNC_PROCESS_PATTERN = 'proton-drive-sync.* start';
 
 // ============================================================================
 // Signal Queue Functions
 // ============================================================================
+
+/**
+ * Check if a proton-drive-sync process is currently running.
+ * @param excludeSelf - If true, excludes the current process from the check
+ */
+export function isAlreadyRunning(excludeSelf = false): boolean {
+    try {
+        const result = execSync(`pgrep -f "${SYNC_PROCESS_PATTERN}"`, { encoding: 'utf-8' });
+        const pids = result
+            .trim()
+            .split('\n')
+            .filter((pid) => pid && (!excludeSelf || parseInt(pid) !== process.pid));
+        return pids.length > 0;
+    } catch {
+        return false;
+    }
+}
 
 /**
  * Send a signal to the sync daemon by adding it to the signal queue.

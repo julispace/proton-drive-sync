@@ -7,7 +7,13 @@ import { execSync } from 'child_process';
 import { join } from 'path';
 import { homedir } from 'os';
 import * as readline from 'readline';
-import { sendSignal, hasSignal, consumeSignal, killSyncProcesses } from '../signals.js';
+import {
+    sendSignal,
+    hasSignal,
+    consumeSignal,
+    killSyncProcesses,
+    isAlreadyRunning,
+} from '../signals.js';
 
 function askYesNo(question: string): Promise<boolean> {
     const rl = readline.createInterface({
@@ -91,6 +97,7 @@ function generateSyncPlist(binPath: string): string {
         <string>${binPath}</string>
         <string>start</string>
         <string>--watch</string>
+        <string>--daemon</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -220,21 +227,27 @@ export function serviceUninstallCommand(): void {
 
 /**
  * Stop the sync process gracefully by sending a stop signal.
- * The daemon will detect this signal and exit cleanly (exit code 0),
+ * The process will detect this signal and exit cleanly (exit code 0),
  * which means launchd won't restart it (due to KeepAlive.SuccessfulExit: false).
  */
 export function stopCommand(): void {
-    // Send stop signal to the daemon
-    sendSignal('stop');
-    console.log('Stop signal sent. Waiting for daemon to exit...');
+    // Check if a sync process is running first
+    if (!isAlreadyRunning()) {
+        console.log('No running proton-drive-sync process found.');
+        return;
+    }
 
-    // Wait for up to 5 seconds for the daemon to exit
+    // Send stop signal to the process
+    sendSignal('stop');
+    console.log('Stop signal sent. Waiting for process to exit...');
+
+    // Wait for up to 5 seconds for the process to exit
     const startTime = Date.now();
-    const timeout = 5000;
+    const timeout = 15000;
     const checkInterval = 100;
 
     const waitForExit = (): void => {
-        // Check if signal was consumed (daemon processed it and exited)
+        // Check if signal was consumed (process handled it and exited)
         if (!hasSignal('stop')) {
             console.log('proton-drive-sync stopped.');
             return;
@@ -245,7 +258,7 @@ export function stopCommand(): void {
         } else {
             // Timeout - consume signal and report
             consumeSignal('stop');
-            console.log('No running proton-drive-sync daemon found (or it did not respond).');
+            console.log('No running proton-drive-sync process found (or it did not respond).');
         }
     };
 
