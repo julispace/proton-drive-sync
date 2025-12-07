@@ -8,7 +8,7 @@ import { execSync } from 'child_process';
 import watchman from 'fb-watchman';
 import pRetry from 'p-retry';
 import { getStoredCredentials } from '../keychain.js';
-import { appState, saveState } from '../state.js';
+import { getClock, setClock } from '../state.js';
 import { loadConfig, type Config } from '../config.js';
 import { logger, enableVerbose } from '../logger.js';
 import { createClient } from './auth.js';
@@ -94,8 +94,7 @@ let oneShotResolve: (() => void) | null = null;
  */
 function saveClockIfNeeded(change: FileChange): void {
     if (watchMode && change.clock && !dryRun) {
-        appState.clocks[change.watchRoot] = change.clock;
-        saveState(appState);
+        setClock(change.watchRoot, change.clock);
     }
 }
 
@@ -259,7 +258,7 @@ function runOneShotSync(config: Config): Promise<void> {
                 const root = watchResp.watch;
                 const relative = watchResp.relative_path || '';
 
-                const savedClock = appState.clocks[watchDir];
+                const savedClock = getClock(watchDir);
 
                 if (savedClock) {
                     logger.info(`Syncing changes since last run for ${dir}...`);
@@ -292,8 +291,7 @@ function runOneShotSync(config: Config): Promise<void> {
 
                         // Save clock
                         if (resp.clock && !dryRun) {
-                            appState.clocks[watchDir] = resp.clock;
-                            saveState(appState);
+                            setClock(watchDir, resp.clock);
                         }
 
                         // Queue changes
@@ -339,7 +337,7 @@ function setupWatchmanDaemon(config: Config): void {
             const relative = watchResp.relative_path || '';
 
             // Step 2: Use saved clock for this directory or null for initial sync
-            const savedClock = appState.clocks[watchDir];
+            const savedClock = getClock(watchDir);
 
             if (savedClock) {
                 logger.info(`Resuming ${dir} from last sync state...`);
