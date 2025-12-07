@@ -14,7 +14,7 @@ import {
     serviceStartCommand,
     serviceReloadCommand,
 } from './cli/service.js';
-import { syncCommand } from './cli/sync.js';
+import { syncCommand, stopCommand } from './cli/sync.js';
 
 program.name('proton-drive-sync').description('Sync local files to Proton Drive').version('1.0.0');
 
@@ -39,6 +39,11 @@ program
     .option('-w, --watch', 'Keep running and watch for changes')
     .action(syncCommand);
 
+program
+    .command('stop')
+    .description('Stop any running proton-drive-sync process')
+    .action(stopCommand);
+
 const logsCmd = program.command('logs').description('View service logs');
 
 logsCmd.option('-f, --follow', 'Follow logs in real-time').action(logsCommand);
@@ -59,11 +64,11 @@ serviceCommand
     .description('Stop and uninstall the launchd service')
     .action(serviceUninstallCommand);
 
-serviceCommand.command('start').description('Start the service').action(serviceStartCommand);
+serviceCommand.command('load').description('Load the service').action(serviceStartCommand);
 
 serviceCommand
-    .command('stop')
-    .description('Stop the service (will restart on next boot)')
+    .command('unload')
+    .description('Unload the service (will reload on next boot)')
     .action(serviceStopCommand);
 
 serviceCommand

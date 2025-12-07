@@ -456,3 +456,13 @@ export async function syncCommand(options: {
         watchmanClient.end();
     }
 }
+
+export function stopCommand(): void {
+    // Kill any running proton-drive-sync processes regardless of how they were started
+    try {
+        execSync('pkill -f "proton-drive-sync.*sync"', { stdio: 'ignore' });
+        console.log('proton-drive-sync stopped.');
+    } catch {
+        console.log('No running proton-drive-sync process found.');
+    }
+}

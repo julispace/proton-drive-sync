@@ -7,6 +7,7 @@ import { execSync } from 'child_process';
 import { join } from 'path';
 import { homedir } from 'os';
 import * as readline from 'readline';
+import { stopCommand } from './sync.js';
 
 function askYesNo(question: string): Promise<boolean> {
     const rl = readline.createInterface({
@@ -233,13 +234,9 @@ export function serviceStopCommand(): void {
     }
 
     // Also kill any running proton-drive-sync processes
-    try {
-        execSync('pkill -f "proton-drive-sync.*/index.js.*sync"', { stdio: 'ignore' });
-    } catch {
-        // Ignore if no processes found
-    }
+    stopCommand();
 
-    console.log('proton-drive-sync stopped. Run `proton-drive-sync service start` to restart.');
+    console.log('Run `proton-drive-sync service load` to restart.');
 }
 
 export function serviceStartCommand(): void {
