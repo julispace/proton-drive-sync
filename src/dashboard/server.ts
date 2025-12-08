@@ -18,12 +18,18 @@ import { logger } from '../logger.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Throttle IPC messages to avoid flooding the child process
+const IPC_THROTTLE_MS = 100;
+
 // ============================================================================
 // Server Management
 // ============================================================================
 
 let dashboardProcess: ChildProcess | null = null;
 let jobEventHandler: ((event: JobEvent) => void) | null = null;
+let lastIpcSendTime = 0;
+let pendingEvent: JobEvent | null = null;
+let throttleTimeout: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Start the dashboard in a separate process.
@@ -69,11 +75,35 @@ export function startDashboard(dryRun = false): void {
   // Send initial config
   dashboardProcess.send({ type: 'config', dryRun });
 
-  // Forward job events to child process via IPC
+  // Forward job events to child process via IPC (throttled to avoid flooding)
   jobEventHandler = (event: JobEvent) => {
-    if (dashboardProcess?.connected) {
-      dashboardProcess.send({ type: 'job', event });
+    if (!dashboardProcess?.connected) return;
+
+    const now = Date.now();
+    pendingEvent = event; // Always keep the latest event
+
+    // If we recently sent, schedule a delayed send
+    if (now - lastIpcSendTime < IPC_THROTTLE_MS) {
+      if (!throttleTimeout) {
+        throttleTimeout = setTimeout(
+          () => {
+            throttleTimeout = null;
+            if (pendingEvent && dashboardProcess?.connected) {
+              dashboardProcess.send({ type: 'job', event: pendingEvent });
+              lastIpcSendTime = Date.now();
+              pendingEvent = null;
+            }
+          },
+          IPC_THROTTLE_MS - (now - lastIpcSendTime)
+        );
+      }
+      return;
     }
+
+    // Send immediately
+    dashboardProcess.send({ type: 'job', event });
+    lastIpcSendTime = now;
+    pendingEvent = null;
   };
   jobEvents.on('job', jobEventHandler);
 }

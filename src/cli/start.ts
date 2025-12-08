@@ -5,7 +5,7 @@
  */
 
 import { loadConfig } from '../config.js';
-import { logger } from '../logger.js';
+import { logger, enableDebug, disableConsoleLogging, setDryRun } from '../logger.js';
 import {
   acquireRunLock,
   releaseRunLock,
@@ -23,7 +23,8 @@ import { runOneShotSync, runWatchMode } from '../sync/index.js';
 interface StartOptions {
   watch?: boolean;
   dryRun?: boolean;
-  debug?: boolean | string;
+  daemon?: boolean;
+  debug?: number;
 }
 
 // ============================================================================
@@ -34,12 +35,30 @@ interface StartOptions {
  * Main entry point for the sync command.
  */
 export async function startCommand(options: StartOptions): Promise<void> {
+  // Validate: --daemon requires --watch
+  if (options.daemon && !options.watch) {
+    console.error('Error: --daemon (-d) requires --watch (-w)');
+    process.exit(1);
+  }
+
   // Set debug level from CLI flag
   if (options.debug) {
-    const level = typeof options.debug === 'string' ? parseInt(options.debug, 10) : 1;
+    const level = options.debug;
     process.env.DEBUG_LEVEL = String(level);
-    if (level >= 1) logger.debug(`Debug level ${level}: app debug enabled`);
+    enableDebug();
+    logger.debug(`Debug level ${level}: App debug enabled`);
     if (level >= 2) logger.debug(`Debug level ${level}: SDK debug enabled`);
+  }
+
+  // Handle daemon mode (disable console logging)
+  if (options.daemon) {
+    disableConsoleLogging();
+  }
+
+  // Handle dry-run mode
+  if (options.dryRun) {
+    setDryRun(true);
+    logger.info('Dry run mode enabled - no changes will be made');
   }
 
   // Load configuration
@@ -65,25 +84,18 @@ export async function startCommand(options: StartOptions): Promise<void> {
   // Start signal listener for IPC
   startSignalListener();
 
-  // Authenticate with Proton
-  const sdkDebug = typeof options.debug === 'string' ? parseInt(options.debug, 10) >= 2 : false;
-  let client;
-  try {
-    client = await authenticateFromKeychain(sdkDebug);
-  } catch (error) {
-    logger.error(`Authentication failed: ${error}`);
-    releaseRunLock();
-    stopSignalListener();
-    process.exit(1);
-  }
-
-  const dryRun = options.dryRun ?? false;
-
   // Set up cleanup handler
   const cleanup = (): void => {
     stopSignalListener();
     releaseRunLock();
   };
+
+  // Handle Ctrl+C early (before auth) to ensure cleanup
+  process.once('SIGINT', () => {
+    logger.info('Interrupted');
+    cleanup();
+    process.exit(0);
+  });
 
   // Handle stop signal
   registerSignalHandler('stop', () => {
@@ -92,12 +104,18 @@ export async function startCommand(options: StartOptions): Promise<void> {
     process.exit(0);
   });
 
-  // Handle Ctrl+C
-  process.once('SIGINT', () => {
-    logger.info('Interrupted');
+  // Authenticate with Proton
+  const sdkDebug = (options.debug ?? 0) >= 2;
+  let client;
+  try {
+    client = await authenticateFromKeychain(sdkDebug);
+  } catch (error) {
+    logger.error(`Authentication failed: ${error}`);
     cleanup();
-    process.exit(0);
-  });
+    process.exit(1);
+  }
+
+  const dryRun = options.dryRun ?? false;
 
   try {
     if (options.watch) {

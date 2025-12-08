@@ -35,6 +35,7 @@ function initializeDatabase() {
   }
 
   const sqlite = new Database(DB_PATH);
+
   const db = drizzle(sqlite, { schema });
 
   // Run migrations from the compiled migrations folder

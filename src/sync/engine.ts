@@ -4,7 +4,7 @@
  * Orchestrates the sync process: coordinates watcher, queue, and processor.
  */
 
-import { join } from 'path';
+import { join, basename } from 'path';
 import { SyncEventType } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { registerSignalHandler } from '../signals.js';
@@ -20,6 +20,13 @@ import {
 } from './watcher.js';
 import { enqueueJob } from './queue.js';
 import { processAllPendingJobs } from './processor.js';
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+// Polling interval for processing jobs in watch mode (10 seconds)
+const JOB_POLL_INTERVAL_MS = 10_000;
 
 // ============================================================================
 // Types
@@ -41,7 +48,12 @@ export interface SyncOptions {
  */
 function handleFileChange(file: FileChange, config: Config, dryRun: boolean): void {
   const localPath = join(file.watchRoot, file.name);
-  const remotePath = join(config.remote_root, file.name);
+
+  // Build remote path: remote_root/dirName/file.name
+  const dirName = basename(file.watchRoot);
+  const remotePath = config.remote_root
+    ? `${config.remote_root}/${dirName}/${file.name}`
+    : `${dirName}/${file.name}`;
 
   // Determine event type
   let eventType: SyncEventType;
@@ -53,14 +65,11 @@ function handleFileChange(file: FileChange, config: Config, dryRun: boolean): vo
     eventType = SyncEventType.UPDATE;
   }
 
-  // Log the change
-  const action =
-    eventType === SyncEventType.DELETE
-      ? 'Delete'
-      : eventType === SyncEventType.CREATE
-        ? 'Create'
-        : 'Update';
-  logger.debug(`${action}: ${file.name} (type: ${file.type})`);
+  // Log the change with details
+  const status = file.exists ? (file.type === 'd' ? 'dir changed' : 'changed') : 'deleted';
+  const typeLabel = file.type === 'd' ? 'dir' : 'file';
+  logger.debug(`[${status}] ${file.name} (size: ${file.size ?? 0}, type: ${typeLabel})`);
+  logger.debug(`Enqueueing ${eventType} job for ${typeLabel}: ${file.name}`);
 
   // Enqueue the job
   enqueueJob({ eventType, localPath, remotePath }, dryRun);
@@ -160,16 +169,22 @@ function startJobProcessorLoop(client: ProtonDriveClient, dryRun: boolean): Proc
   const processLoop = async (): Promise<void> => {
     if (!running) return;
 
+    const startTime = Date.now();
     logger.debug('Job processor polling...');
 
     try {
-      await processAllPendingJobs(client, dryRun);
+      const processed = await processAllPendingJobs(client, dryRun);
+      if (processed > 0) {
+        logger.info(`Processed ${processed} sync job(s)`);
+      }
     } catch (error) {
       logger.error(`Job processor error: ${error}`);
     }
 
     if (running) {
-      timeoutId = setTimeout(processLoop, 1000);
+      const elapsed = Date.now() - startTime;
+      const delay = Math.max(0, JOB_POLL_INTERVAL_MS - elapsed);
+      timeoutId = setTimeout(processLoop, delay);
     }
   };
 
