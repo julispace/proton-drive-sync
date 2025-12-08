@@ -16,6 +16,7 @@ import {
   stopCommand,
 } from './cli/service.js';
 import { startCommand } from './cli/sync.js';
+import { dashboardCommand } from './cli/dashboard.js';
 
 program.name('proton-drive-sync').description('Sync local files to Proton Drive').version('1.0.0');
 
@@ -45,6 +46,11 @@ program
     0
   )
   .action(startCommand);
+
+program
+  .command('dashboard')
+  .description('Start the dashboard server standalone')
+  .action(dashboardCommand);
 
 program
   .command('stop')

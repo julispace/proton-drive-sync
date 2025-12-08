@@ -75,6 +75,16 @@ const MAX_RETRIES: Record<ErrorCategory, number> = {
 };
 
 // ============================================================================
+// Dry-Run State (module-level, only used when dryRun=true)
+// ============================================================================
+
+/** Set of job IDs currently being processed during dry-run mode */
+export const dryRunProcessingIds = new Set<number>();
+
+/** Set of job IDs already synced during dry-run mode */
+export const dryRunSyncedIds = new Set<number>();
+
+// ============================================================================
 // Job Queue Functions
 // ============================================================================
 
@@ -145,9 +155,48 @@ export function enqueueJob(
  * Get the next job to process and atomically mark it as PROCESSING.
  * Cleans up stale processing queue entries first.
  * Returns the job or undefined if no pending jobs.
+ *
+ * @param dryRun - If true, skips DB writes and uses in-memory tracking
  */
 export function getNextPendingJob(dryRun: boolean = false) {
   const now = new Date();
+
+  if (dryRun) {
+    // === DRY-RUN MODE ===
+    // No DB writes, use in-memory tracking to avoid reprocessing same job
+    // Fetch all pending jobs and filter out already-synced ones (inefficient but simple)
+    const jobs = db
+      .select({
+        id: schema.syncJobs.id,
+        eventType: schema.syncJobs.eventType,
+        localPath: schema.syncJobs.localPath,
+        remotePath: schema.syncJobs.remotePath,
+        status: schema.syncJobs.status,
+        nRetries: schema.syncJobs.nRetries,
+        retryAt: schema.syncJobs.retryAt,
+        lastError: schema.syncJobs.lastError,
+        createdAt: schema.syncJobs.createdAt,
+      })
+      .from(schema.syncJobs)
+      .where(
+        and(eq(schema.syncJobs.status, SyncJobStatus.PENDING), lte(schema.syncJobs.retryAt, now))
+      )
+      .orderBy(schema.syncJobs.retryAt)
+      .all();
+
+    // Find first job not already processing or synced in this dry-run session
+    const job = jobs.find(
+      (job) => !dryRunProcessingIds.has(job.id) && !dryRunSyncedIds.has(job.id)
+    );
+
+    if (job) {
+      dryRunProcessingIds.add(job.id);
+    }
+
+    return job;
+  }
+
+  // === NORMAL MODE ===
   const staleThreshold = new Date(Date.now() - STALE_PROCESSING_MS);
 
   // Clean up stale entries from processing queue (startedAt > 2 min ago)
@@ -162,8 +211,6 @@ export function getNextPendingJob(dryRun: boolean = false) {
 
   // Transaction: select next PENDING job and mark as PROCESSING atomically
   return db.transaction((tx) => {
-    // Select next PENDING job not currently being processed
-    // LEFT JOIN with processing_queue and filter for NULL = job not in processing queue
     const job = tx
       .select({
         id: schema.syncJobs.id,
@@ -192,8 +239,7 @@ export function getNextPendingJob(dryRun: boolean = false) {
       .limit(1)
       .get();
 
-    // If no job found or dryRun, return without marking as PROCESSING
-    if (!job || dryRun) return job;
+    if (!job) return job;
 
     // Mark as PROCESSING and add to processing queue
     tx.update(schema.syncJobs)
@@ -216,10 +262,13 @@ export function getNextPendingJob(dryRun: boolean = false) {
  * Mark a job as synced (completed successfully).
  * Only sets SYNCED if status is still PROCESSING (not if a new update set it back to PENDING).
  * Always removes from processing_queue regardless.
- * No-op if dryRun is true.
  */
 export function markJobSynced(jobId: number, localPath: string, dryRun: boolean): void {
-  if (dryRun) return;
+  if (dryRun) {
+    dryRunProcessingIds.delete(jobId);
+    dryRunSyncedIds.add(jobId);
+    return;
+  }
 
   logger.debug(`Marking job ${jobId} as SYNCED (${localPath})`);
 
@@ -422,11 +471,13 @@ export function scheduleRetry(
   logger.info(`Job ${jobId} scheduled for retry in ${Math.round(delaySec)}s`);
 }
 
-/** Helper to delete a node, throws on failure */
+/** Helper to delete a node, throws on failure. No-op if dryRun is true. */
 async function deleteNodeOrThrow(
   client: ProtonDriveClient,
-  remotePath: string
+  remotePath: string,
+  dryRun: boolean
 ): Promise<{ existed: boolean }> {
+  if (dryRun) return { existed: false };
   const result = await deleteNode(client, remotePath, false);
   if (!result.success) {
     throw new Error(result.error);
@@ -434,12 +485,14 @@ async function deleteNodeOrThrow(
   return { existed: result.existed };
 }
 
-/** Helper to create/update a node, throws on failure */
+/** Helper to create/update a node, throws on failure. No-op if dryRun is true. */
 async function createNodeOrThrow(
   client: ProtonDriveClient,
   localPath: string,
-  remotePath: string
+  remotePath: string,
+  dryRun: boolean
 ): Promise<string> {
+  if (dryRun) return 'dry-run-node-uid';
   const result = await createNode(client, localPath, remotePath);
   if (!result.success) {
     throw new Error(result.error);
@@ -447,15 +500,16 @@ async function createNodeOrThrow(
   return result.nodeUid!;
 }
 
-/** Helper to delete and recreate a node */
+/** Helper to delete and recreate a node. No-op if dryRun is true. */
 async function deleteAndRecreateNode(
   client: ProtonDriveClient,
   localPath: string,
-  remotePath: string
+  remotePath: string,
+  dryRun: boolean
 ): Promise<string> {
-  await deleteNodeOrThrow(client, remotePath);
+  await deleteNodeOrThrow(client, remotePath, dryRun);
   logger.info(`Deleted node ${remotePath}, now recreating`);
-  const nodeUid = await createNodeOrThrow(client, localPath, remotePath);
+  const nodeUid = await createNodeOrThrow(client, localPath, remotePath, dryRun);
   logger.info(`Successfully recreated node: ${remotePath} -> ${nodeUid}`);
   return nodeUid;
 }
@@ -468,6 +522,9 @@ function getErrorMessage(error: unknown): string {
 /**
  * Process a single job from the queue.
  * Returns true if a job was processed, false if queue is empty.
+ *
+ * @param client - Proton Drive client
+ * @param dryRun - If true, skips API calls and DB writes
  */
 export async function processNextJob(client: ProtonDriveClient, dryRun: boolean): Promise<boolean> {
   const job = getNextPendingJob(dryRun);
@@ -478,12 +535,12 @@ export async function processNextJob(client: ProtonDriveClient, dryRun: boolean)
   try {
     if (eventType === SyncEventType.DELETE) {
       logger.info(`Deleting: ${remotePath}`);
-      const { existed } = await deleteNodeOrThrow(client, remotePath);
+      const { existed } = await deleteNodeOrThrow(client, remotePath, dryRun);
       logger.info(existed ? `Deleted: ${remotePath}` : `Already gone: ${remotePath}`);
     } else {
       const typeLabel = eventType === SyncEventType.CREATE ? 'Creating' : 'Updating';
       logger.info(`${typeLabel}: ${remotePath}`);
-      const nodeUid = await createNodeOrThrow(client, localPath, remotePath);
+      const nodeUid = await createNodeOrThrow(client, localPath, remotePath, dryRun);
       logger.info(`Success: ${remotePath} -> ${nodeUid}`);
     }
 
@@ -508,7 +565,7 @@ export async function processNextJob(client: ProtonDriveClient, dryRun: boolean)
         `Job ${id} (${localPath}) hit max draft revision retries (${maxRetries}), deleting and recreating`
       );
       try {
-        await deleteAndRecreateNode(client, localPath, remotePath);
+        await deleteAndRecreateNode(client, localPath, remotePath, dryRun);
         markJobSynced(id, localPath, dryRun);
       } catch (recreateError) {
         const recreateErrorMsg = getErrorMessage(recreateError);

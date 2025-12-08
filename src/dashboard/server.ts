@@ -9,8 +9,10 @@ import { Hono } from 'hono';
 import { serve } from '@hono/node-server';
 import { streamSSE } from 'hono/streaming';
 import { createReadStream, statSync, watchFile, unwatchFile } from 'fs';
+import { readFile } from 'fs/promises';
 import { createInterface } from 'readline';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { xdgState } from 'xdg-basedir';
 import {
   getJobCounts,
@@ -21,12 +23,13 @@ import {
   type JobEvent,
 } from '../jobs.js';
 import { logger } from '../logger.js';
-import { dashboardHtml } from './html.js';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 const DASHBOARD_PORT = 4242;
 const LOG_FILE = join(xdgState || '', 'proton-drive-sync', 'sync.log');
 
@@ -37,8 +40,9 @@ const LOG_FILE = join(xdgState || '', 'proton-drive-sync', 'sync.log');
 const app = new Hono();
 
 // Serve dashboard HTML at root
-app.get('/', (c) => {
-  return c.html(dashboardHtml);
+app.get('/', async (c) => {
+  const html = await readFile(join(__dirname, 'index.html'), 'utf-8');
+  return c.html(html);
 });
 
 // ============================================================================

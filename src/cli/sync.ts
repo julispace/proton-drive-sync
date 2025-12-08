@@ -8,7 +8,7 @@ import { execSync } from 'child_process';
 import watchman from 'fb-watchman';
 import { getClock, setClock } from '../state.js';
 import { loadConfig, type Config } from '../config.js';
-import { logger, disableConsoleLogging, enableDebug } from '../logger.js';
+import { logger, disableConsoleLogging, enableDebug, setDryRun } from '../logger.js';
 import { authenticateFromKeychain } from './auth.js';
 import {
   isAlreadyRunning,
@@ -411,8 +411,13 @@ export async function startCommand(options: {
   }
 
   if (options.dryRun) {
+    // Dry-run mode: disable file logging, add [DRY-RUN] prefix to console
+    setDryRun(true);
+  }
+
+  if (options.dryRun) {
     dryRun = true;
-    logger.info('[DRY-RUN] Dry run mode enabled - no changes will be made');
+    logger.info('Dry run mode enabled - no changes will be made');
   }
 
   watchMode = options.watch;
