@@ -446,7 +446,7 @@ export async function startCommand(options: {
     const jobProcessor = startJobProcessor();
 
     // Start dashboard server
-    startDashboard();
+    startDashboard(options.dryRun);
 
     // Shared cleanup function
     const cleanup = (): void => {

@@ -51,26 +51,34 @@ app.get('/', async (c) => {
 
 // GET /api/stats - Job queue counts
 app.get('/api/stats', (c) => {
+  logger.debug('Dashboard /api/stats request received');
   const counts = getJobCounts();
+  logger.debug(`Dashboard /api/stats responding: ${JSON.stringify(counts)}`);
   return c.json(counts);
 });
 
 // GET /api/jobs/recent - Recently synced jobs
 app.get('/api/jobs/recent', (c) => {
+  logger.debug('Dashboard /api/jobs/recent request received');
   const limit = parseInt(c.req.query('limit') || '50', 10);
   const jobs = getRecentJobs(limit);
+  logger.debug(`Dashboard /api/jobs/recent responding: limit=${limit}, count=${jobs.length}`);
   return c.json(jobs);
 });
 
 // GET /api/jobs/blocked - Blocked jobs
 app.get('/api/jobs/blocked', (c) => {
+  logger.debug('Dashboard /api/jobs/blocked request received');
   const jobs = getBlockedJobs();
+  logger.debug(`Dashboard /api/jobs/blocked responding: count=${jobs.length}`);
   return c.json(jobs);
 });
 
 // GET /api/jobs/processing - Currently processing jobs
 app.get('/api/jobs/processing', (c) => {
+  logger.debug('Dashboard /api/jobs/processing request received');
   const jobs = getProcessingJobs();
+  logger.debug(`Dashboard /api/jobs/processing responding: count=${jobs.length}`);
   return c.json(jobs);
 });
 
@@ -80,6 +88,7 @@ app.get('/api/jobs/processing', (c) => {
 
 // GET /api/events - SSE stream of job state changes
 app.get('/api/events', async (c) => {
+  logger.debug('Dashboard /api/events SSE connection opened');
   return streamSSE(c, async (stream) => {
     const handler = (event: JobEvent) => {
       stream.writeSSE({
@@ -103,6 +112,7 @@ app.get('/api/events', async (c) => {
 
     // Cleanup on close
     stream.onAbort(() => {
+      logger.debug('Dashboard /api/events SSE connection closed');
       clearInterval(heartbeat);
       jobEvents.off('job', handler);
     });
@@ -114,6 +124,7 @@ app.get('/api/events', async (c) => {
 
 // GET /api/logs - SSE stream of log lines since connection
 app.get('/api/logs', async (c) => {
+  logger.debug('Dashboard /api/logs SSE connection opened');
   return streamSSE(c, async (stream) => {
     let fileSize = 0;
 
@@ -173,6 +184,7 @@ app.get('/api/logs', async (c) => {
 
     // Cleanup on close
     stream.onAbort(() => {
+      logger.debug('Dashboard /api/logs SSE connection closed');
       clearInterval(heartbeat);
       unwatchFile(LOG_FILE, onFileChange);
     });
@@ -187,12 +199,23 @@ app.get('/api/logs', async (c) => {
 // ============================================================================
 
 let server: ReturnType<typeof serve> | null = null;
+let isDryRun = false;
 
-export function startDashboard(): void {
+// GET /api/config - Dashboard configuration (dry-run state, etc.)
+app.get('/api/config', (c) => {
+  logger.debug('Dashboard /api/config request received');
+  logger.debug(`Dashboard /api/config responding: dryRun=${isDryRun}`);
+  return c.json({ dryRun: isDryRun });
+});
+
+export function startDashboard(dryRun = false): void {
   if (server) {
     logger.warn('Dashboard server already running');
     return;
   }
+
+  isDryRun = dryRun;
+  logger.debug(`Dashboard starting with dryRun=${dryRun}`);
 
   server = serve({
     fetch: app.fetch,
