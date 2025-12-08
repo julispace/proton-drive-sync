@@ -34,11 +34,11 @@ const RETRY_DELAYS_SEC = [
 const JITTER_FACTOR = 0.25;
 const STALE_PROCESSING_MS = 2 * 60 * 1000;
 const NETWORK_RETRY_CAP_INDEX = 4;
-const DRAFT_REVISION_RETRY_SEC = 128;
+const REUPLOAD_NEEDED_RETRY_SEC = 256;
 
 export const ErrorCategory = {
   NETWORK: 'network',
-  DRAFT_REVISION: 'draft_revision',
+  REUPLOAD_NEEDED: 'reupload_needed',
   OTHER: 'other',
 } as const;
 export type ErrorCategory = (typeof ErrorCategory)[keyof typeof ErrorCategory];
@@ -50,7 +50,7 @@ export interface ErrorClassification {
 
 const MAX_RETRIES: Record<ErrorCategory, number> = {
   [ErrorCategory.OTHER]: RETRY_DELAYS_SEC.length,
-  [ErrorCategory.DRAFT_REVISION]: 7,
+  [ErrorCategory.REUPLOAD_NEEDED]: 7,
   [ErrorCategory.NETWORK]: Infinity,
 };
 
@@ -285,8 +285,8 @@ function categorizeError(error: string): ErrorClassification {
   // Check for draft revision error first (more specific)
   if (lowerError.includes('draft revision already exists')) {
     return {
-      category: ErrorCategory.DRAFT_REVISION,
-      maxRetries: MAX_RETRIES[ErrorCategory.DRAFT_REVISION],
+      category: ErrorCategory.REUPLOAD_NEEDED,
+      maxRetries: MAX_RETRIES[ErrorCategory.REUPLOAD_NEEDED],
     };
   }
 
@@ -338,9 +338,9 @@ export function scheduleRetry(
   let delaySec: number;
   let newRetries: number;
 
-  if (errorCategory === ErrorCategory.DRAFT_REVISION) {
+  if (errorCategory === ErrorCategory.REUPLOAD_NEEDED) {
     // Fixed 128s delay for draft revision errors
-    delaySec = DRAFT_REVISION_RETRY_SEC;
+    delaySec = REUPLOAD_NEEDED_RETRY_SEC;
     // Don't increment retries (retry indefinitely)
     newRetries = nRetries;
   } else if (errorCategory === ErrorCategory.NETWORK) {
@@ -458,7 +458,7 @@ export async function processNextJob(client: ProtonDriveClient, dryRun: boolean)
         `Job ${id} (${localPath}) failed permanently after ${maxRetries} retries: ${errorMessage}`
       );
       markJobBlocked(id, localPath, errorMessage, dryRun);
-    } else if (errorCategory === ErrorCategory.DRAFT_REVISION && nRetries >= maxRetries) {
+    } else if (errorCategory === ErrorCategory.REUPLOAD_NEEDED && nRetries >= maxRetries) {
       // Proton drive sometimes gets its internal draft revision state corrupted if
       // an upload failed or there was some race condition during uploading. In this case
       // simply delete the node and recreate it seems to fix the issue

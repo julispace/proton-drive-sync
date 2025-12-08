@@ -320,18 +320,44 @@ async function setupWatchmanDaemon(config: Config): Promise<void> {
 }
 
 /**
- * Start a polling service that processes queued jobs every JOB_POLL_INTERVAL_MS.
- * Returns the interval ID so it can be cleared on shutdown.
+ * Start a job processor that processes queued jobs with adaptive timing.
+ * If processing takes longer than JOB_POLL_INTERVAL_MS, runs again immediately.
+ * Otherwise waits for the remaining time before the next run.
+ * Returns an object with a stop() method for shutdown.
  */
-function startJobProcessor(): NodeJS.Timeout {
-  return setInterval(async () => {
+function startJobProcessor(): { stop: () => void } {
+  let timeoutId: NodeJS.Timeout | null = null;
+  let running = true;
+
+  async function processLoop(): Promise<void> {
+    if (!running) return;
+
+    const startTime = Date.now();
     logger.debug('Job processor polling...');
-    if (!protonClient) return;
-    const processed = await processAllPendingJobs(protonClient, dryRun);
-    if (processed > 0) {
-      logger.info(`Processed ${processed} sync job(s)`);
+
+    if (protonClient) {
+      const processed = await processAllPendingJobs(protonClient, dryRun);
+      if (processed > 0) {
+        logger.info(`Processed ${processed} sync job(s)`);
+      }
     }
-  }, JOB_POLL_INTERVAL_MS);
+
+    if (!running) return;
+
+    const elapsed = Date.now() - startTime;
+    const delay = Math.max(0, JOB_POLL_INTERVAL_MS - elapsed);
+    timeoutId = setTimeout(processLoop, delay);
+  }
+
+  // Start the loop
+  processLoop();
+
+  return {
+    stop: () => {
+      running = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    },
+  };
 }
 
 // ============================================================================
@@ -412,7 +438,7 @@ export async function startCommand(options: {
         consumeSignal('stop');
         logger.info('Stop signal received. Shutting down...');
         clearInterval(stopSignalCheck);
-        clearInterval(jobProcessor);
+        jobProcessor.stop();
         watchmanClient.end();
         process.exit(0);
       }
@@ -421,7 +447,7 @@ export async function startCommand(options: {
     // Handle graceful shutdown
     process.on('SIGINT', () => {
       clearInterval(stopSignalCheck);
-      clearInterval(jobProcessor);
+      jobProcessor.stop();
       logger.info('Shutting down...');
       watchmanClient.end();
       process.exit(0);
