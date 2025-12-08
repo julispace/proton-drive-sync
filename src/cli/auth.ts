@@ -11,9 +11,12 @@ import {
   createOpenPGPCrypto,
   initCrypto,
 } from '../auth.js';
-import { storeCredentials, deleteStoredCredentials, getStoredCredentials } from '../keychain.js';
+import { storeCredentials, deleteStoredCredentials } from '../keychain.js';
 import type { ProtonDriveClient, ApiError } from '../proton/types.js';
-import { logger } from '../logger.js';
+
+// Re-export for use in start.ts
+export { getStoredCredentials } from '../keychain.js';
+export type { ProtonDriveClient } from '../proton/types.js';
 
 /**
  * Create a ProtonDriveClient from username/password
@@ -101,48 +104,4 @@ export async function authCommand(): Promise<void> {
   await deleteStoredCredentials();
   await storeCredentials(username, pwd);
   console.log('Credentials saved to Keychain.');
-}
-
-/**
- * Authenticate using stored credentials (for sync command)
- * @param sdkDebug - Enable debug logging for the Proton SDK
- */
-export async function authenticateFromKeychain(sdkDebug = false): Promise<ProtonDriveClient> {
-  const storedCreds = await getStoredCredentials();
-
-  if (!storedCreds) {
-    logger.error('No credentials found. Run `proton-drive-sync auth` first.');
-    process.exit(1);
-  }
-
-  logger.info(`Authenticating as ${storedCreds.username}...`);
-
-  // Retry with exponential backoff: 1s, 4s, 16s, 64s, 256s
-  const MAX_RETRIES = 5;
-  let lastError: Error | null = null;
-
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      const client = await createClient(storedCreds.username, storedCreds.password, sdkDebug);
-      logger.info('Authenticated.');
-      return client;
-    } catch (error) {
-      lastError = error as Error;
-
-      // Only retry on network errors (fetch failed)
-      if (!lastError.message.includes('fetch failed')) {
-        throw lastError;
-      }
-
-      if (attempt < MAX_RETRIES - 1) {
-        const delayMs = Math.pow(4, attempt) * 1000; // 1s, 4s, 16s, 64s
-        logger.warn(
-          `Authentication failed (attempt ${attempt + 1}/${MAX_RETRIES}), retrying in ${delayMs / 1000}s...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-      }
-    }
-  }
-
-  throw lastError;
 }

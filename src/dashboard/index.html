@@ -93,6 +93,109 @@
         </div>
 
         <div class="flex items-center gap-4">
+          <!-- Auth Status -->
+          <div
+            class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-gray-700 transition-colors duration-300"
+            :class="{
+              'border-green-500/30 bg-green-500/10': auth.status === 'authenticated',
+              'border-amber-500/30 bg-amber-500/10': auth.status === 'authenticating',
+              'border-red-500/30 bg-red-500/10': auth.status === 'failed',
+              'border-gray-500/30 bg-gray-500/10': auth.status === 'pending'
+            }"
+          >
+            <!-- Spinner for authenticating -->
+            <svg
+              x-show="auth.status === 'authenticating'"
+              class="animate-spin h-3 w-3 text-amber-400"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                class="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="4"
+              ></circle>
+              <path
+                class="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
+            </svg>
+            <!-- Check icon for authenticated -->
+            <svg
+              x-show="auth.status === 'authenticated'"
+              class="h-3 w-3 text-green-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            <!-- X icon for failed -->
+            <svg
+              x-show="auth.status === 'failed'"
+              class="h-3 w-3 text-red-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="3"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            <!-- Clock icon for pending -->
+            <svg
+              x-show="auth.status === 'pending'"
+              class="h-3 w-3 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span
+              class="text-xs font-medium"
+              :class="{
+                'text-green-400': auth.status === 'authenticated',
+                'text-amber-400': auth.status === 'authenticating',
+                'text-red-400': auth.status === 'failed',
+                'text-gray-400': auth.status === 'pending'
+              }"
+            >
+              <template x-if="auth.status === 'pending'">
+                <span>Waiting for auth...</span>
+              </template>
+              <template x-if="auth.status === 'authenticating'">
+                <span
+                  x-text="'Authenticating... (' + (auth.attempt || 1) + '/' + (auth.maxAttempts || 5) + ')'"
+                ></span>
+              </template>
+              <template x-if="auth.status === 'authenticated'">
+                <span x-text="'Authenticated as: ' + (auth.username || 'User')"></span>
+              </template>
+              <template x-if="auth.status === 'failed'">
+                <span>Auth Failed</span>
+              </template>
+            </span>
+          </div>
+
+          <!-- Connection Status -->
           <div
             class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-gray-700 transition-colors duration-300"
             :class="connected ? 'border-green-500/30 bg-green-500/10' : 'border-red-500/30 bg-red-500/10'"
@@ -477,7 +580,43 @@
                 class="w-2 h-2 rounded-full bg-green-500 animate-pulse"
                 x-show="connected"
               ></span>
-              <span class="text-xs font-mono text-gray-500">tail -f sync.log</span>
+
+              <!-- Log Level Filter (Minimum Threshold) -->
+              <div class="flex items-center gap-2 ml-4">
+                <span class="text-[10px] text-gray-500 font-medium uppercase tracking-wider"
+                  >Min Level</span
+                >
+                <div class="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
+                  <button
+                    @click="logLevel = 20"
+                    class="px-2 py-0.5 text-[10px] font-medium rounded transition-all duration-200 relative"
+                    :class="logLevel === 20 ? 'bg-gray-700 text-gray-200 shadow-sm z-10' : 'text-gray-500 hover:text-gray-400 hover:bg-gray-800/50'"
+                  >
+                    DBG
+                  </button>
+                  <button
+                    @click="logLevel = 30"
+                    class="px-2 py-0.5 text-[10px] font-medium rounded transition-all duration-200 relative"
+                    :class="logLevel === 30 ? 'bg-blue-900/50 text-blue-200 shadow-sm z-10' : 'text-gray-500 hover:text-gray-400 hover:bg-gray-800/50'"
+                  >
+                    INF
+                  </button>
+                  <button
+                    @click="logLevel = 40"
+                    class="px-2 py-0.5 text-[10px] font-medium rounded transition-all duration-200 relative"
+                    :class="logLevel === 40 ? 'bg-amber-900/50 text-amber-200 shadow-sm z-10' : 'text-gray-500 hover:text-gray-400 hover:bg-gray-800/50'"
+                  >
+                    WRN
+                  </button>
+                  <button
+                    @click="logLevel = 50"
+                    class="px-2 py-0.5 text-[10px] font-medium rounded transition-all duration-200 relative"
+                    :class="logLevel === 50 ? 'bg-red-900/50 text-red-200 shadow-sm z-10' : 'text-gray-500 hover:text-gray-400 hover:bg-gray-800/50'"
+                  >
+                    ERR
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           <div
@@ -489,6 +628,7 @@
             </template>
             <template x-for="(line, index) in logs" :key="index">
               <div
+                x-show="getLineLevel(line) >= logLevel"
                 class="break-all border-l-2 pl-3 py-0.5"
                 :class="{
                    'border-red-500/50 bg-red-500/5 text-red-200': isError(line),
@@ -510,19 +650,35 @@
         return {
           connected: false,
           dryRun: false,
+          auth: {
+            status: 'pending',
+            username: null,
+            attempt: null,
+            maxAttempts: null,
+            error: null,
+          },
           stats: { pending: 0, processing: 0, synced: 0, blocked: 0 },
           recent: [],
           blocked: [],
           processing: [],
           logs: [],
+          logLevel: 20, // Default to DEBUG (20)
+          eventsRetryDelay: 1000, // Exponential backoff for SSE reconnection
+          logsRetryDelay: 1000,
           eventsSource: null,
           logsSource: null,
 
           async init() {
-            await this.fetchConfig();
-            await this.fetchAll();
+            console.log('[init] START');
+            // Don't block on these - fetch in parallel and let them complete
+            this.fetchConfig();
+            this.fetchAuth();
+            // Connect SSE streams first (non-blocking)
             this.connectEvents();
             this.connectLogs();
+            // Then fetch initial state
+            await this.fetchEntireJobState();
+            console.log('[init] END');
           },
 
           async fetchConfig() {
@@ -535,10 +691,17 @@
             }
           },
 
+          async fetchAuth() {
+            try {
+              const res = await fetch('/api/auth');
+              this.auth = await res.json();
+            } catch (err) {
+              console.error('Failed to fetch auth:', err);
+            }
+          },
+
           formatPath(path) {
-            if (!path) return '';
-            const parts = path.split('/');
-            return parts.length > 2 ? '.../' + parts.slice(-2).join('/') : path;
+            return path || '';
           },
 
           formatTime(dateStr) {
@@ -546,17 +709,25 @@
             return new Date(dateStr).toLocaleTimeString();
           },
 
+          getLineLevel(line) {
+            if (line.includes('"level":"error"') || line.includes('"level":50')) return 50;
+            if (line.includes('"level":"warn"') || line.includes('"level":40')) return 40;
+            if (line.includes('"level":"info"') || line.includes('"level":30')) return 30;
+            if (line.includes('"level":"debug"') || line.includes('"level":20')) return 20;
+            return 20; // Default to debug if unknown
+          },
+
           isError(line) {
-            return line.includes('"level":"error"') || line.includes('"level":50');
+            return this.getLineLevel(line) === 50;
           },
           isWarn(line) {
-            return line.includes('"level":"warn"') || line.includes('"level":40');
+            return this.getLineLevel(line) === 40;
           },
           isInfo(line) {
-            return line.includes('"level":"info"') || line.includes('"level":30');
+            return this.getLineLevel(line) === 30;
           },
           isDebug(line) {
-            return line.includes('"level":"debug"') || line.includes('"level":20');
+            return this.getLineLevel(line) === 20;
           },
 
           formatLogLine(line) {
@@ -568,8 +739,8 @@
             }
           },
 
-          async fetchAll() {
-            console.log('[fetchAll] START');
+          async fetchEntireJobState() {
+            console.log('[fetchEntireJobState] START');
             try {
               const [statsRes, recentRes, blockedRes, processingRes] = await Promise.all([
                 fetch('/api/stats'),
@@ -585,24 +756,29 @@
             } catch (err) {
               console.error('Failed to fetch data:', err);
             }
-            console.log('[fetchAll] END');
+            console.log('[fetchEntireJobState] END');
           },
 
           connectEvents() {
             this.eventsSource = new EventSource('/api/events');
             this.eventsSource.onopen = () => {
               this.connected = true;
+              this.eventsRetryDelay = 1000; // Reset backoff on success
             };
             this.eventsSource.onerror = () => {
               this.connected = false;
-              setTimeout(() => this.connectEvents(), 2000);
+              setTimeout(() => this.connectEvents(), this.eventsRetryDelay);
+              this.eventsRetryDelay = Math.min(this.eventsRetryDelay * 2, 30000); // Max 30s
             };
             this.eventsSource.addEventListener('stats', (e) => {
               this.stats = JSON.parse(e.data);
             });
-            this.eventsSource.addEventListener('diff', (e) => {
+            this.eventsSource.addEventListener('job_state_diff', (e) => {
               const diff = JSON.parse(e.data);
               this.applyDiff(diff);
+            });
+            this.eventsSource.addEventListener('auth', (e) => {
+              this.auth = JSON.parse(e.data);
             });
           },
 
@@ -650,6 +826,9 @@
 
           connectLogs() {
             this.logsSource = new EventSource('/api/logs');
+            this.logsSource.onopen = () => {
+              this.logsRetryDelay = 1000; // Reset backoff on success
+            };
             this.logsSource.addEventListener('log', (e) => {
               this.logs.push(e.data);
               if (this.logs.length > 500) this.logs = this.logs.slice(-500);
@@ -659,7 +838,8 @@
               });
             });
             this.logsSource.onerror = () => {
-              setTimeout(() => this.connectLogs(), 2000);
+              setTimeout(() => this.connectLogs(), this.logsRetryDelay);
+              this.logsRetryDelay = Math.min(this.logsRetryDelay * 2, 30000); // Max 30s
             };
           },
         };

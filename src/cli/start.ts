@@ -13,8 +13,96 @@ import {
   stopSignalListener,
   registerSignalHandler,
 } from '../signals.js';
-import { authenticateFromKeychain } from './auth.js';
+import { getStoredCredentials, createClient, type ProtonDriveClient } from './auth.js';
+import { startDashboard, stopDashboard, sendAuthStatus } from '../dashboard/server.js';
 import { runOneShotSync, runWatchMode } from '../sync/index.js';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface StartOptions {
+  watch?: boolean;
+  dryRun?: boolean;
+  daemon?: boolean;
+  debug?: number;
+}
+
+// ============================================================================
+// Authentication
+// ============================================================================
+
+/**
+ * Authenticate using stored credentials with retry and exponential backoff.
+ * Sends status updates to the dashboard via IPC.
+ * @param sdkDebug - Enable debug logging for the Proton SDK
+ */
+async function authenticateWithStatus(sdkDebug = false): Promise<ProtonDriveClient> {
+  const storedCreds = await getStoredCredentials();
+
+  if (!storedCreds) {
+    sendAuthStatus({ status: 'failed', error: 'No credentials found' });
+    logger.error('No credentials found. Run `proton-drive-sync auth` first.');
+    process.exit(1);
+  }
+
+  logger.info(`Authenticating as ${storedCreds.username}...`);
+
+  // Retry with exponential backoff: 1s, 4s, 16s, 64s, 256s
+  const MAX_RETRIES = 5;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    sendAuthStatus({
+      status: 'authenticating',
+      username: storedCreds.username,
+      attempt: attempt + 1,
+      maxAttempts: MAX_RETRIES,
+    });
+
+    try {
+      const client = await createClient(storedCreds.username, storedCreds.password, sdkDebug);
+      sendAuthStatus({ status: 'authenticated', username: storedCreds.username });
+      logger.info('Authenticated.');
+      return client;
+    } catch (error) {
+      lastError = error as Error;
+
+      // Only retry on network errors (fetch failed)
+      if (!lastError.message.includes('fetch failed')) {
+        sendAuthStatus({
+          status: 'failed',
+          username: storedCreds.username,
+          error: lastError.message,
+        });
+        throw lastError;
+      }
+
+      if (attempt < MAX_RETRIES - 1) {
+        const delayMs = Math.pow(4, attempt) * 1000; // 1s, 4s, 16s, 64s
+        sendAuthStatus({
+          status: 'authenticating',
+          username: storedCreds.username,
+          attempt: attempt + 1,
+          maxAttempts: MAX_RETRIES,
+          error: 'Network error, retrying...',
+          nextRetryMs: delayMs,
+        });
+        logger.warn(
+          `Authentication failed (attempt ${attempt + 1}/${MAX_RETRIES}), retrying in ${delayMs / 1000}s...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
+  sendAuthStatus({
+    status: 'failed',
+    username: storedCreds.username,
+    error: lastError?.message || 'Max retries exceeded',
+  });
+  throw lastError;
+}
 
 // ============================================================================
 // Types
@@ -86,6 +174,7 @@ export async function startCommand(options: StartOptions): Promise<void> {
 
   // Set up cleanup handler
   const cleanup = (): void => {
+    stopDashboard();
     stopSignalListener();
     releaseRunLock();
   };
@@ -104,18 +193,22 @@ export async function startCommand(options: StartOptions): Promise<void> {
     process.exit(0);
   });
 
+  // Start dashboard early (before auth) so user can see auth status
+  const dryRun = options.dryRun ?? false;
+  if (options.watch) {
+    startDashboard(dryRun);
+  }
+
   // Authenticate with Proton
   const sdkDebug = (options.debug ?? 0) >= 2;
   let client;
   try {
-    client = await authenticateFromKeychain(sdkDebug);
+    client = await authenticateWithStatus(sdkDebug);
   } catch (error) {
     logger.error(`Authentication failed: ${error}`);
     cleanup();
     process.exit(1);
   }
-
-  const dryRun = options.dryRun ?? false;
 
   try {
     if (options.watch) {

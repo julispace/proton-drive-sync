@@ -22,6 +22,21 @@ const __dirname = dirname(__filename);
 const DIFF_ACCUMULATE_MS = 100;
 
 // ============================================================================
+// Auth Status Types
+// ============================================================================
+
+export type AuthStatus = 'pending' | 'authenticating' | 'authenticated' | 'failed';
+
+export interface AuthStatusUpdate {
+  status: AuthStatus;
+  username?: string;
+  attempt?: number;
+  maxAttempts?: number;
+  error?: string;
+  nextRetryMs?: number;
+}
+
+// ============================================================================
 // Diff Types - Accumulated changes to send to frontend
 // ============================================================================
 
@@ -195,7 +210,7 @@ export function startDashboard(dryRun = false): void {
       diffTimeout = setTimeout(() => {
         diffTimeout = null;
         if (dashboardProcess?.connected && hasDiffChanges(accumulatedDiff)) {
-          dashboardProcess.send({ type: 'diff', diff: accumulatedDiff });
+          dashboardProcess.send({ type: 'job_state_diff', diff: accumulatedDiff });
           accumulatedDiff = createEmptyDiff();
         }
       }, DIFF_ACCUMULATE_MS);
@@ -219,5 +234,14 @@ export function stopDashboard(): void {
     dashboardProcess.kill('SIGTERM');
     dashboardProcess = null;
     logger.debug('Dashboard process stopped');
+  }
+}
+
+/**
+ * Send auth status update to the dashboard process.
+ */
+export function sendAuthStatus(update: AuthStatusUpdate): void {
+  if (dashboardProcess?.connected) {
+    dashboardProcess.send({ type: 'auth', ...update });
   }
 }

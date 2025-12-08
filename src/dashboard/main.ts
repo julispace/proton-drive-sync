@@ -16,7 +16,7 @@ import { fileURLToPath } from 'url';
 import { xdgState } from 'xdg-basedir';
 import { EventEmitter } from 'events';
 import { getJobCounts, getRecentJobs, getBlockedJobs, getProcessingJobs } from '../sync/queue.js';
-import type { DashboardDiff } from './server.js';
+import type { DashboardDiff, AuthStatusUpdate } from './server.js';
 
 // ============================================================================
 // Constants
@@ -27,21 +27,46 @@ const __dirname = dirname(__filename);
 const DASHBOARD_PORT = 4242;
 const LOG_FILE = join(xdgState || '', 'proton-drive-sync', 'sync.log');
 
+// Store initial log position at subprocess startup (so refreshes get all session logs)
+let initialLogPosition = 0;
+try {
+  initialLogPosition = statSync(LOG_FILE).size;
+} catch {
+  // File doesn't exist yet
+}
+
 // ============================================================================
 // IPC Event Bridge
 // ============================================================================
 
 // Local event emitter to bridge IPC messages to SSE streams
-const diffEvents = new EventEmitter();
+const stateDiffEvents = new EventEmitter();
+const authEvents = new EventEmitter();
+
+// Current auth status (for API endpoint)
+let currentAuthStatus: AuthStatusUpdate = { status: 'pending' };
 
 // Listen for diff events from parent process via IPC
-process.on('message', (msg: { type: string; diff?: DashboardDiff; dryRun?: boolean }) => {
-  if (msg.type === 'diff' && msg.diff) {
-    diffEvents.emit('diff', msg.diff);
-  } else if (msg.type === 'config' && msg.dryRun !== undefined) {
-    isDryRun = msg.dryRun;
+process.on(
+  'message',
+  (msg: { type: string; diff?: DashboardDiff; dryRun?: boolean } & Partial<AuthStatusUpdate>) => {
+    if (msg.type === 'job_state_diff' && msg.diff) {
+      stateDiffEvents.emit('job_state_diff', msg.diff);
+    } else if (msg.type === 'config' && msg.dryRun !== undefined) {
+      isDryRun = msg.dryRun;
+    } else if (msg.type === 'auth') {
+      currentAuthStatus = {
+        status: msg.status!,
+        username: msg.username,
+        attempt: msg.attempt,
+        maxAttempts: msg.maxAttempts,
+        error: msg.error,
+        nextRetryMs: msg.nextRetryMs,
+      };
+      authEvents.emit('auth', currentAuthStatus);
+    }
   }
-});
+);
 
 // ============================================================================
 // Hono App
@@ -90,26 +115,45 @@ app.get('/api/config', (c) => {
   return c.json({ dryRun: isDryRun });
 });
 
+// GET /api/auth - Current auth status
+app.get('/api/auth', (c) => {
+  return c.json(currentAuthStatus);
+});
+
 // ============================================================================
 // SSE Endpoints
 // ============================================================================
 
-// GET /api/events - SSE stream of job state changes (diffs)
+// GET /api/events - SSE stream of job state changes (diffs) and auth status
 app.get('/api/events', async (c) => {
   return streamSSE(c, async (stream) => {
-    const handler = (diff: DashboardDiff) => {
+    const stateDiffHandler = (diff: DashboardDiff) => {
       stream.writeSSE({
-        event: 'diff',
+        event: 'job_state_diff',
         data: JSON.stringify(diff),
       });
     };
 
-    diffEvents.on('diff', handler);
+    const authHandler = (auth: AuthStatusUpdate) => {
+      stream.writeSSE({
+        event: 'auth',
+        data: JSON.stringify(auth),
+      });
+    };
+
+    stateDiffEvents.on('job_state_diff', stateDiffHandler);
+    authEvents.on('auth', authHandler);
 
     // Send initial stats
     await stream.writeSSE({
       event: 'stats',
       data: JSON.stringify(getJobCounts()),
+    });
+
+    // Send current auth status
+    await stream.writeSSE({
+      event: 'auth',
+      data: JSON.stringify(currentAuthStatus),
     });
 
     // Keep connection alive with heartbeat
@@ -120,7 +164,8 @@ app.get('/api/events', async (c) => {
     // Cleanup on close
     stream.onAbort(() => {
       clearInterval(heartbeat);
-      diffEvents.off('diff', handler);
+      stateDiffEvents.off('job_state_diff', stateDiffHandler);
+      authEvents.off('auth', authHandler);
     });
 
     // Keep the stream open
@@ -128,25 +173,18 @@ app.get('/api/events', async (c) => {
   });
 });
 
-// GET /api/logs - SSE stream of log lines since connection
+// GET /api/logs - SSE stream of log lines since dashboard startup
 app.get('/api/logs', async (c) => {
   return streamSSE(c, async (stream) => {
-    let fileSize = 0;
-
-    try {
-      fileSize = statSync(LOG_FILE).size;
-    } catch {
-      // File doesn't exist yet, start from 0
-    }
-
-    let currentPosition = fileSize;
+    // Start from where the log file was when dashboard subprocess started
+    let currentPosition = initialLogPosition;
 
     const sendNewLines = async () => {
       try {
         const stats = statSync(LOG_FILE);
         if (stats.size <= currentPosition) {
           if (stats.size < currentPosition) {
-            currentPosition = 0; // Reset if truncated
+            currentPosition = 0; // Reset if truncated (log rotation)
           }
           return;
         }
@@ -172,6 +210,9 @@ app.get('/api/logs', async (c) => {
         // Ignore errors (file might not exist yet)
       }
     };
+
+    // Send all logs from startup immediately
+    await sendNewLines();
 
     const onFileChange = () => {
       sendNewLines();
