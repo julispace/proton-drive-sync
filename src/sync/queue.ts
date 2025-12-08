@@ -1,18 +1,14 @@
 /**
- * Proton Drive Sync - Job Queue
+ * Sync Job Queue
  *
- * Manages the sync job queue for buffered file operations.
+ * Manages the sync job queue: enqueue, dequeue, status updates, retry logic.
  */
 
 import { EventEmitter } from 'events';
 import { eq, and, lte, inArray, isNull, sql } from 'drizzle-orm';
-import { db, schema } from './db/index.js';
-import { SyncJobStatus, SyncEventType } from './db/schema.js';
-import { createNode } from './proton/create.js';
-import { deleteNode } from './proton/delete.js';
-import { logger, isDebugEnabled } from './logger.js';
-import { registerSignalHandler, unregisterSignalHandler } from './signals.js';
-import type { ProtonDriveClient } from './proton/types.js';
+import { db, schema } from '../db/index.js';
+import { SyncJobStatus, SyncEventType } from '../db/schema.js';
+import { logger, isDebugEnabled } from '../logger.js';
 
 // ============================================================================
 // Event Emitter for Dashboard
@@ -33,10 +29,26 @@ export interface JobEvent {
 }
 
 // ============================================================================
+// Types
+// ============================================================================
+
+export interface Job {
+  id: number;
+  eventType: SyncEventType;
+  localPath: string;
+  remotePath: string | null;
+  status: SyncJobStatus;
+  nRetries: number;
+  retryAt: Date;
+  lastError: string | null;
+  createdAt: Date;
+}
+
+// ============================================================================
 // Constants
 // ============================================================================
 
-// Retry delays in seconds (×4 exponential backoff, capped at ~1 week)
+// Retry delays in seconds (x4 exponential backoff, capped at ~1 week)
 const RETRY_DELAYS_SEC = [
   1,
   4,
@@ -55,7 +67,6 @@ const JITTER_FACTOR = 0.25;
 const STALE_PROCESSING_MS = 2 * 60 * 1000;
 const NETWORK_RETRY_CAP_INDEX = 4;
 const REUPLOAD_NEEDED_RETRY_SEC = 256;
-const SYNC_CONCURRENCY = 64;
 
 export const ErrorCategory = {
   NETWORK: 'network',
@@ -117,7 +128,7 @@ export function enqueueJob(
     }
   }
 
-  // INSERT ... ON CONFLICT DO UPDATE is a single atomic SQL statement - no transaction needed
+  // INSERT ... ON CONFLICT DO UPDATE is a single atomic SQL statement
   const result = db
     .insert(schema.syncJobs)
     .values({
@@ -142,7 +153,7 @@ export function enqueueJob(
     })
     .run();
 
-  // Emit event for dashboard (include stats to avoid extra API call)
+  // Emit event for dashboard
   jobEvents.emit('job', {
     type: 'enqueue',
     jobId: Number(result.lastInsertRowid),
@@ -157,16 +168,12 @@ export function enqueueJob(
  * Get the next job to process and atomically mark it as PROCESSING.
  * Cleans up stale processing queue entries first.
  * Returns the job or undefined if no pending jobs.
- *
- * @param dryRun - If true, skips DB writes and uses in-memory tracking
  */
-export function getNextPendingJob(dryRun: boolean = false) {
+export function getNextPendingJob(dryRun: boolean = false): Job | undefined {
   const now = new Date();
 
   if (dryRun) {
-    // === DRY-RUN MODE ===
-    // No DB writes, use in-memory tracking to avoid reprocessing same job
-    // Fetch all pending jobs and filter out already-synced ones (inefficient but simple)
+    // DRY-RUN MODE: No DB writes, use in-memory tracking
     const jobs = db
       .select({
         id: schema.syncJobs.id,
@@ -186,7 +193,6 @@ export function getNextPendingJob(dryRun: boolean = false) {
       .orderBy(schema.syncJobs.retryAt)
       .all();
 
-    // Find first job not already processing or synced in this dry-run session
     const job = jobs.find(
       (job) => !dryRunProcessingIds.has(job.id) && !dryRunSyncedIds.has(job.id)
     );
@@ -198,10 +204,10 @@ export function getNextPendingJob(dryRun: boolean = false) {
     return job;
   }
 
-  // === NORMAL MODE ===
+  // NORMAL MODE
   const staleThreshold = new Date(Date.now() - STALE_PROCESSING_MS);
 
-  // Clean up stale entries from processing queue (startedAt > 2 min ago)
+  // Clean up stale entries from processing queue
   const staleCleanup = db
     .delete(schema.processingQueue)
     .where(lte(schema.processingQueue.startedAt, staleThreshold))
@@ -262,8 +268,6 @@ export function getNextPendingJob(dryRun: boolean = false) {
 
 /**
  * Mark a job as synced (completed successfully).
- * Only sets SYNCED if status is still PROCESSING (not if a new update set it back to PENDING).
- * Always removes from processing_queue regardless.
  */
 export function markJobSynced(jobId: number, localPath: string, dryRun: boolean): void {
   if (dryRun) {
@@ -274,7 +278,6 @@ export function markJobSynced(jobId: number, localPath: string, dryRun: boolean)
 
   logger.debug(`Marking job ${jobId} as SYNCED (${localPath})`);
 
-  // Transaction: update status and remove from processing queue
   db.transaction((tx) => {
     tx.update(schema.syncJobs)
       .set({ status: SyncJobStatus.SYNCED, lastError: null })
@@ -285,7 +288,6 @@ export function markJobSynced(jobId: number, localPath: string, dryRun: boolean)
     tx.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
   });
 
-  // Emit event for dashboard (include stats to avoid extra API call)
   jobEvents.emit('job', {
     type: 'synced',
     jobId,
@@ -294,7 +296,7 @@ export function markJobSynced(jobId: number, localPath: string, dryRun: boolean)
     stats: getJobCounts(),
   } satisfies JobEvent);
 
-  // Separate transaction: cleanup old SYNCED jobs (low watermark: 1024, high watermark: 1280)
+  // Cleanup old SYNCED jobs (watermark: 1280)
   const syncedCount = db
     .select()
     .from(schema.syncJobs)
@@ -321,9 +323,6 @@ export function markJobSynced(jobId: number, localPath: string, dryRun: boolean)
 
 /**
  * Mark a job as blocked (failed permanently after max retries).
- * Only sets BLOCKED if status is still PROCESSING.
- * Always removes from processing_queue.
- * No-op if dryRun is true.
  */
 export function markJobBlocked(
   jobId: number,
@@ -335,7 +334,6 @@ export function markJobBlocked(
 
   logger.debug(`Marking job ${jobId} as BLOCKED (${localPath})`);
 
-  // Transaction: update status and remove from processing queue
   db.transaction((tx) => {
     tx.update(schema.syncJobs)
       .set({ status: SyncJobStatus.BLOCKED, lastError: error })
@@ -346,7 +344,6 @@ export function markJobBlocked(
     tx.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
   });
 
-  // Emit event for dashboard (include stats to avoid extra API call)
   jobEvents.emit('job', {
     type: 'blocked',
     jobId,
@@ -359,18 +356,20 @@ export function markJobBlocked(
 
 /**
  * Set the last error message for a job.
- * No-op if dryRun is true.
  */
-function setJobError(jobId: number, error: string, dryRun: boolean): void {
+export function setJobError(jobId: number, error: string, dryRun: boolean): void {
   if (dryRun) return;
   db.update(schema.syncJobs).set({ lastError: error }).where(eq(schema.syncJobs.id, jobId)).run();
 }
 
+// ============================================================================
+// Error Categorization & Retry Logic
+// ============================================================================
+
 /** Categorize an error message and return category with max retries */
-function categorizeError(error: string): ErrorClassification {
+export function categorizeError(error: string): ErrorClassification {
   const lowerError = error.toLowerCase();
 
-  // Check for draft revision error first (more specific)
   if (lowerError.includes('draft revision already exists')) {
     return {
       category: ErrorCategory.REUPLOAD_NEEDED,
@@ -378,7 +377,6 @@ function categorizeError(error: string): ErrorClassification {
     };
   }
 
-  // Check for network-related errors
   const networkPatterns = [
     'ECONNREFUSED',
     'ECONNRESET',
@@ -407,12 +405,6 @@ function categorizeError(error: string): ErrorClassification {
 
 /**
  * Schedule a job for retry with exponential backoff and jitter.
- * Retry strategy depends on error category:
- * - OTHER: normal backoff, blocks after MAX_RETRIES
- * - NETWORK: backoff capped at 256s, retries indefinitely
- * - DRAFT_REVISION: fixed 128s delay, retries indefinitely
- * Also removes from processing_queue.
- * No-op if dryRun is true.
  */
 export function scheduleRetry(
   jobId: number,
@@ -427,21 +419,16 @@ export function scheduleRetry(
   let newRetries: number;
 
   if (errorCategory === ErrorCategory.REUPLOAD_NEEDED) {
-    // Fixed 128s delay for draft revision errors
     delaySec = REUPLOAD_NEEDED_RETRY_SEC;
-    // Don't increment retries (retry indefinitely)
     newRetries = nRetries;
   } else if (errorCategory === ErrorCategory.NETWORK) {
-    // Network errors: backoff capped at 256s
     const effectiveRetries = Math.min(nRetries, NETWORK_RETRY_CAP_INDEX);
     const delayIndex = Math.min(effectiveRetries, RETRY_DELAYS_SEC.length - 1);
     const baseDelaySec = RETRY_DELAYS_SEC[delayIndex];
     const jitterSec = baseDelaySec * JITTER_FACTOR * (Math.random() * 2 - 1);
     delaySec = Math.max(1, baseDelaySec + jitterSec);
-    // Cap retries to not increment beyond the cap (retry indefinitely)
     newRetries = Math.min(nRetries + 1, NETWORK_RETRY_CAP_INDEX + 1);
   } else {
-    // OTHER: normal backoff
     const delayIndex = Math.min(nRetries, RETRY_DELAYS_SEC.length - 1);
     const baseDelaySec = RETRY_DELAYS_SEC[delayIndex];
     const jitterSec = baseDelaySec * JITTER_FACTOR * (Math.random() * 2 - 1);
@@ -449,22 +436,16 @@ export function scheduleRetry(
     newRetries = nRetries + 1;
   }
 
-  // Transaction: update job and remove from processing queue
   const retryAt = new Date(Date.now() + delaySec * 1000);
 
   db.transaction((tx) => {
     tx.update(schema.syncJobs)
-      .set({
-        status: SyncJobStatus.PENDING,
-        nRetries: newRetries,
-        retryAt,
-      })
+      .set({ status: SyncJobStatus.PENDING, nRetries: newRetries, retryAt })
       .where(eq(schema.syncJobs.id, jobId))
       .run();
     tx.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
   });
 
-  // Emit event for dashboard (include stats to avoid extra API call)
   jobEvents.emit('job', {
     type: 'retry',
     jobId,
@@ -476,170 +457,12 @@ export function scheduleRetry(
   logger.info(`Job ${jobId} scheduled for retry in ${Math.round(delaySec)}s`);
 }
 
-/** Helper to delete a node, throws on failure. No-op if dryRun is true. */
-async function deleteNodeOrThrow(
-  client: ProtonDriveClient,
-  remotePath: string,
-  dryRun: boolean
-): Promise<{ existed: boolean }> {
-  if (dryRun) return { existed: false };
-  const result = await deleteNode(client, remotePath, false);
-  if (!result.success) {
-    throw new Error(result.error);
-  }
-  return { existed: result.existed };
-}
-
-/** Helper to create/update a node, throws on failure. No-op if dryRun is true. */
-async function createNodeOrThrow(
-  client: ProtonDriveClient,
-  localPath: string,
-  remotePath: string,
-  dryRun: boolean
-): Promise<string> {
-  if (dryRun) return 'dry-run-node-uid';
-  const result = await createNode(client, localPath, remotePath);
-  if (!result.success) {
-    throw new Error(result.error);
-  }
-  return result.nodeUid!;
-}
-
-/** Helper to delete and recreate a node. No-op if dryRun is true. */
-async function deleteAndRecreateNode(
-  client: ProtonDriveClient,
-  localPath: string,
-  remotePath: string,
-  dryRun: boolean
-): Promise<string> {
-  await deleteNodeOrThrow(client, remotePath, dryRun);
-  logger.info(`Deleted node ${remotePath}, now recreating`);
-  const nodeUid = await createNodeOrThrow(client, localPath, remotePath, dryRun);
-  logger.info(`Successfully recreated node: ${remotePath} -> ${nodeUid}`);
-  return nodeUid;
-}
-
-/** Extract error message from unknown error */
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * Process a single job from the queue.
- * Returns true if a job was processed, false if queue is empty.
- *
- * @param client - Proton Drive client
- * @param dryRun - If true, skips API calls and DB writes
- */
-export async function processNextJob(client: ProtonDriveClient, dryRun: boolean): Promise<boolean> {
-  const job = getNextPendingJob(dryRun);
-  if (!job) return false;
-
-  const { id, eventType, localPath, remotePath, nRetries } = job;
-
-  try {
-    if (eventType === SyncEventType.DELETE) {
-      logger.info(`Deleting: ${remotePath}`);
-      const { existed } = await deleteNodeOrThrow(client, remotePath, dryRun);
-      logger.info(existed ? `Deleted: ${remotePath}` : `Already gone: ${remotePath}`);
-    } else {
-      const typeLabel = eventType === SyncEventType.CREATE ? 'Creating' : 'Updating';
-      logger.info(`${typeLabel}: ${remotePath}`);
-      const nodeUid = await createNodeOrThrow(client, localPath, remotePath, dryRun);
-      logger.info(`Success: ${remotePath} -> ${nodeUid}`);
-    }
-
-    markJobSynced(id, localPath, dryRun);
-    return true;
-  } catch (error) {
-    const errorMessage = getErrorMessage(error);
-    const { category: errorCategory, maxRetries } = categorizeError(errorMessage);
-
-    setJobError(id, errorMessage, dryRun);
-
-    if (errorCategory === ErrorCategory.OTHER && nRetries >= maxRetries) {
-      logger.error(
-        `Job ${id} (${localPath}) failed permanently after ${maxRetries} retries: ${errorMessage}`
-      );
-      markJobBlocked(id, localPath, errorMessage, dryRun);
-    } else if (errorCategory === ErrorCategory.REUPLOAD_NEEDED && nRetries >= maxRetries) {
-      // Proton drive sometimes gets its internal draft revision state corrupted if
-      // an upload failed or there was some race condition during uploading. In this case
-      // simply delete the node and recreate it seems to fix the issue
-      logger.warn(
-        `Job ${id} (${localPath}) hit max draft revision retries (${maxRetries}), deleting and recreating`
-      );
-      try {
-        await deleteAndRecreateNode(client, localPath, remotePath, dryRun);
-        markJobSynced(id, localPath, dryRun);
-      } catch (recreateError) {
-        const recreateErrorMsg = getErrorMessage(recreateError);
-        logger.error(`Failed to delete+recreate node: ${recreateErrorMsg}`);
-        setJobError(id, recreateErrorMsg, dryRun);
-        scheduleRetry(id, localPath, 0, errorCategory, dryRun);
-      }
-    } else {
-      logger.error(`Job ${id} (${localPath}) failed: ${errorMessage}`);
-      scheduleRetry(id, localPath, nRetries, errorCategory, dryRun);
-    }
-
-    return true;
-  }
-}
-
-/**
- * Process all pending jobs in the queue with concurrency.
- * Stops processing if a stop signal is received.
- * Returns the number of jobs processed.
- */
-export async function processAllPendingJobs(
-  client: ProtonDriveClient,
-  dryRun: boolean
-): Promise<number> {
-  let count = 0;
-  let stopRequested = false;
-
-  const handleStop = (): void => {
-    stopRequested = true;
-  };
-  registerSignalHandler('stop', handleStop);
-
-  try {
-    // Process jobs with up to SYNC_CONCURRENCY in parallel using a worker pool pattern
-    const activeJobs = new Set<Promise<boolean>>();
-
-    const startNextJob = (): void => {
-      if (stopRequested) return;
-      const jobPromise = processNextJob(client, dryRun).then((processed) => {
-        activeJobs.delete(jobPromise);
-        if (processed) {
-          count++;
-          startNextJob(); // Replenish the pool
-        }
-        return processed;
-      });
-      activeJobs.add(jobPromise);
-    };
-
-    // Start initial batch of concurrent jobs
-    for (let i = 0; i < SYNC_CONCURRENCY; i++) {
-      startNextJob();
-    }
-
-    // Wait for pool to drain (all jobs complete or no more jobs available)
-    while (activeJobs.size > 0) {
-      await Promise.race(activeJobs);
-    }
-  } finally {
-    unregisterSignalHandler('stop', handleStop);
-  }
-
-  return count;
-}
+// ============================================================================
+// Dashboard Query Functions
+// ============================================================================
 
 /**
  * Get counts of jobs by status.
- * Uses a single SQL query with GROUP BY for efficiency.
  */
 export function getJobCounts(): {
   pending: number;
@@ -647,7 +470,6 @@ export function getJobCounts(): {
   synced: number;
   blocked: number;
 } {
-  // Single query with GROUP BY instead of 4 separate queries
   const rows = db
     .select({
       status: schema.syncJobs.status,
@@ -671,12 +493,7 @@ export function getJobCounts(): {
 /**
  * Get recently synced jobs.
  */
-export function getRecentJobs(limit: number = 50): Array<{
-  id: number;
-  localPath: string;
-  remotePath: string | null;
-  createdAt: Date;
-}> {
+export function getRecentJobs(limit: number = 50) {
   return db
     .select({
       id: schema.syncJobs.id,
@@ -689,20 +506,13 @@ export function getRecentJobs(limit: number = 50): Array<{
     .orderBy(schema.syncJobs.id)
     .limit(limit)
     .all()
-    .reverse(); // Most recent first
+    .reverse();
 }
 
 /**
  * Get blocked jobs with error details.
  */
-export function getBlockedJobs(): Array<{
-  id: number;
-  localPath: string;
-  remotePath: string | null;
-  lastError: string | null;
-  nRetries: number;
-  createdAt: Date;
-}> {
+export function getBlockedJobs() {
   return db
     .select({
       id: schema.syncJobs.id,
@@ -720,12 +530,7 @@ export function getBlockedJobs(): Array<{
 /**
  * Get currently processing jobs.
  */
-export function getProcessingJobs(): Array<{
-  id: number;
-  localPath: string;
-  remotePath: string | null;
-  createdAt: Date;
-}> {
+export function getProcessingJobs() {
   return db
     .select({
       id: schema.syncJobs.id,

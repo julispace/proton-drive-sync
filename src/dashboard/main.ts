@@ -21,7 +21,7 @@ import {
   getBlockedJobs,
   getProcessingJobs,
   type JobEvent,
-} from '../jobs.js';
+} from '../sync/queue.js';
 
 // ============================================================================
 // Constants
@@ -206,10 +206,26 @@ const server = serve({
   port: DASHBOARD_PORT,
 });
 
-// Notify parent that we're ready
-if (process.send) {
-  process.send({ type: 'ready', port: DASHBOARD_PORT });
-}
+// Handle server errors (e.g., EADDRINUSE)
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (process.send) {
+    process.send({ type: 'error', error: err.message, code: err.code });
+  }
+  process.exit(1);
+});
+
+// Wait for server to be listening before notifying parent
+server.on('listening', () => {
+  if (process.send) {
+    process.send({ type: 'ready', port: DASHBOARD_PORT });
+  }
+});
+
+// Exit if parent process dies (IPC channel closes)
+process.on('disconnect', () => {
+  server.close();
+  process.exit(0);
+});
 
 // Graceful shutdown
 process.on('SIGTERM', () => {

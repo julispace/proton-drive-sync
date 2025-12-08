@@ -8,7 +8,7 @@
 import { fork, type ChildProcess } from 'child_process';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { jobEvents, type JobEvent } from '../jobs.js';
+import { jobEvents, type JobEvent } from '../sync/queue.js';
 import { logger } from '../logger.js';
 
 // ============================================================================

@@ -1,0 +1,266 @@
+/**
+ * Watchman File Watcher
+ *
+ * Handles Watchman client management, file change detection, and subscriptions.
+ */
+
+import { realpathSync } from 'fs';
+import { basename } from 'path';
+import { execSync } from 'child_process';
+import watchman from 'fb-watchman';
+import { getClock, setClock } from '../state.js';
+import { logger } from '../logger.js';
+import type { Config } from '../config.js';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface FileChange {
+  name: string; // Relative path from the watch root
+  size: number; // File size in bytes
+  mtime_ms: number; // Last modification time in milliseconds since epoch
+  exists: boolean; // false if the file was deleted
+  type: 'f' | 'd'; // 'f' for file, 'd' for directory
+  new: boolean; // true if file is newer than the 'since' clock (i.e., newly created)
+  watchRoot: string; // Which watch root this change came from (added by us, not from Watchman)
+}
+
+interface WatchmanQueryResponse {
+  clock: string;
+  files: Omit<FileChange, 'watchRoot'>[];
+}
+
+export type FileChangeHandler = (file: FileChange) => void;
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const SUB_NAME = 'proton-drive-sync';
+
+// ============================================================================
+// Watchman Client
+// ============================================================================
+
+const watchmanClient = new watchman.Client();
+
+/** Wait for Watchman to be available, retrying with delay */
+export async function waitForWatchman(maxAttempts = 30, delayMs = 1000): Promise<void> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      execSync('watchman version', { stdio: 'ignore' });
+      return;
+    } catch {
+      if (attempt === maxAttempts) {
+        console.error('Error: Watchman failed to start.');
+        console.error('Install it from: https://facebook.github.io/watchman/docs/install');
+        process.exit(1);
+      }
+      logger.debug(`Waiting for watchman to start (attempt ${attempt}/${maxAttempts})...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+}
+
+/** Close the Watchman client connection */
+export function closeWatchman(): void {
+  watchmanClient.end();
+}
+
+// ============================================================================
+// Watchman Helpers (promisified)
+// ============================================================================
+
+/** Promisified wrapper for Watchman watch-project command */
+function registerWithWatchman(dir: string): Promise<watchman.WatchProjectResponse> {
+  return new Promise((resolve, reject) => {
+    watchmanClient.command(['watch-project', dir], (err, resp) => {
+      if (err) reject(err);
+      else resolve(resp as watchman.WatchProjectResponse);
+    });
+  });
+}
+
+/** Promisified wrapper for Watchman query command */
+function queryWatchman(
+  root: string,
+  query: Record<string, unknown>
+): Promise<WatchmanQueryResponse> {
+  return new Promise((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (watchmanClient as any).command(
+      ['query', root, query],
+      (err: Error | null, resp: WatchmanQueryResponse) => {
+        if (err) reject(err);
+        else resolve(resp);
+      }
+    );
+  });
+}
+
+/** Promisified wrapper for Watchman subscribe command */
+function subscribeWatchman(
+  root: string,
+  subName: string,
+  sub: Record<string, unknown>
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (watchmanClient as any).command(['subscribe', root, subName, sub], (err: Error | null) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+/** Build a Watchman query/subscription object */
+function buildWatchmanQuery(savedClock: string | null, relative: string): Record<string, unknown> {
+  const query: Record<string, unknown> = {
+    expression: ['anyof', ['type', 'f'], ['type', 'd']],
+    fields: ['name', 'size', 'mtime_ms', 'exists', 'type', 'new'],
+  };
+
+  if (savedClock) {
+    query.since = savedClock;
+  }
+
+  if (relative) {
+    query.relative_root = relative;
+  }
+
+  return query;
+}
+
+// ============================================================================
+// One-shot Query
+// ============================================================================
+
+/**
+ * Query all configured directories for changes since last sync.
+ * Returns all file changes found across all directories.
+ */
+export async function queryAllChanges(
+  config: Config,
+  onFileChange: FileChangeHandler,
+  dryRun: boolean
+): Promise<number> {
+  let totalChanges = 0;
+
+  await Promise.all(
+    config.sync_dirs.map(async (dir) => {
+      const watchDir = realpathSync(dir);
+
+      // Register directory with Watchman
+      const watchResp = await registerWithWatchman(watchDir);
+      const root = watchResp.watch;
+      const relative = watchResp.relative_path || '';
+
+      const savedClock = getClock(watchDir);
+
+      if (savedClock) {
+        logger.info(`Syncing changes since last run for ${dir}...`);
+      } else {
+        logger.info(`First run - syncing all existing files in ${dir}...`);
+      }
+
+      const query = buildWatchmanQuery(savedClock, relative);
+      const resp = await queryWatchman(root, query);
+
+      // Save clock
+      if (resp.clock) {
+        setClock(watchDir, resp.clock, dryRun);
+      }
+
+      // Process changes
+      const files = resp.files || [];
+      for (const file of files) {
+        onFileChange({ ...file, watchRoot: watchDir });
+        totalChanges++;
+      }
+    })
+  );
+
+  return totalChanges;
+}
+
+// ============================================================================
+// Watch Mode (Subscriptions)
+// ============================================================================
+
+/**
+ * Set up Watchman subscriptions for all configured directories.
+ * Calls onFileChange for each file change detected.
+ */
+export async function setupWatchSubscriptions(
+  config: Config,
+  onFileChange: FileChangeHandler,
+  dryRun: boolean
+): Promise<void> {
+  // Set up watches for all configured directories
+  await Promise.all(
+    config.sync_dirs.map(async (dir) => {
+      const watchDir = realpathSync(dir);
+      const subName = `${SUB_NAME}-${basename(watchDir)}`;
+
+      // Register directory with Watchman
+      const watchResp = await registerWithWatchman(watchDir);
+      const root = watchResp.watch;
+      const relative = watchResp.relative_path || '';
+
+      // Use saved clock for this directory or null for initial sync
+      const savedClock = getClock(watchDir);
+
+      if (savedClock) {
+        logger.info(`Resuming ${dir} from last sync state...`);
+      } else {
+        logger.info(`First run - syncing all existing files in ${dir}...`);
+      }
+
+      const sub = buildWatchmanQuery(savedClock, relative);
+
+      // Register subscription
+      await subscribeWatchman(root, subName, sub);
+      logger.info(`Watching ${dir} for changes...`);
+    })
+  );
+
+  // Listen for notifications from all subscriptions
+  watchmanClient.on('subscription', (resp: watchman.SubscriptionResponse) => {
+    // Check if this is one of our subscriptions
+    if (!resp.subscription.startsWith(SUB_NAME)) return;
+
+    logger.debug(`Watchman event: ${resp.subscription} (${resp.files.length} files)`);
+
+    // Extract the watch root from the subscription name
+    const dirName = resp.subscription.replace(`${SUB_NAME}-`, '');
+    const watchRoot = config.sync_dirs.find((d) => basename(realpathSync(d)) === dirName) || '';
+
+    if (!watchRoot) {
+      logger.error(`Could not find watch root for subscription: ${resp.subscription}`);
+      return;
+    }
+
+    const resolvedRoot = realpathSync(watchRoot);
+
+    for (const file of resp.files) {
+      const fileChange = file as unknown as Omit<FileChange, 'watchRoot'>;
+      logger.debug(
+        `  File: ${fileChange.name} (exists: ${fileChange.exists}, type: ${fileChange.type}, new: ${fileChange.new})`
+      );
+      onFileChange({ ...fileChange, watchRoot: resolvedRoot });
+    }
+
+    // Save the new clock so we don't see these events again on restart
+    const clock = (resp as unknown as { clock?: string }).clock;
+    if (clock) {
+      setClock(resolvedRoot, clock, dryRun);
+    }
+  });
+
+  // Handle errors
+  watchmanClient.on('error', (e: Error) => logger.error(`Watchman error: ${e}`));
+  watchmanClient.on('end', () => {});
+
+  logger.info('Watching for file changes... (press Ctrl+C to exit)');
+}
