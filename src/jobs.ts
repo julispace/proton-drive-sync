@@ -36,6 +36,7 @@ const JITTER_FACTOR = 0.25;
 const STALE_PROCESSING_MS = 2 * 60 * 1000;
 const NETWORK_RETRY_CAP_INDEX = 4;
 const REUPLOAD_NEEDED_RETRY_SEC = 256;
+const SYNC_CONCURRENCY = 64;
 
 export const ErrorCategory = {
   NETWORK: 'network',
@@ -87,6 +88,7 @@ export function enqueueJob(
     }
   }
 
+  // INSERT ... ON CONFLICT DO UPDATE is a single atomic SQL statement - no transaction needed
   db.insert(schema.syncJobs)
     .values({
       eventType: params.eventType,
@@ -112,10 +114,11 @@ export function enqueueJob(
 }
 
 /**
- * Get the next job to process.
- * Cleans up stale processing queue entries first, then returns next PENDING job.
+ * Get the next job to process and atomically mark it as PROCESSING.
+ * Cleans up stale processing queue entries first.
+ * Returns the job or undefined if no pending jobs.
  */
-export function getNextPendingJob() {
+export function getNextPendingJob(dryRun: boolean = false) {
   const now = new Date();
   const staleThreshold = new Date(Date.now() - STALE_PROCESSING_MS);
 
@@ -129,35 +132,56 @@ export function getNextPendingJob() {
     logger.debug(`Cleaned up ${staleCleanup.changes} stale processing queue entries`);
   }
 
-  // Return next PENDING job not currently being processed.
-  // LEFT JOIN with processing_queue and filter for NULL = job not in processing queue
-  return db
-    .select({
-      id: schema.syncJobs.id,
-      eventType: schema.syncJobs.eventType,
-      localPath: schema.syncJobs.localPath,
-      remotePath: schema.syncJobs.remotePath,
-      status: schema.syncJobs.status,
-      nRetries: schema.syncJobs.nRetries,
-      retryAt: schema.syncJobs.retryAt,
-      lastError: schema.syncJobs.lastError,
-      createdAt: schema.syncJobs.createdAt,
-    })
-    .from(schema.syncJobs)
-    .leftJoin(
-      schema.processingQueue,
-      eq(schema.syncJobs.localPath, schema.processingQueue.localPath)
-    )
-    .where(
-      and(
-        eq(schema.syncJobs.status, SyncJobStatus.PENDING),
-        lte(schema.syncJobs.retryAt, now),
-        isNull(schema.processingQueue.localPath)
+  // Transaction: select next PENDING job and mark as PROCESSING atomically
+  return db.transaction((tx) => {
+    // Select next PENDING job not currently being processed
+    // LEFT JOIN with processing_queue and filter for NULL = job not in processing queue
+    const job = tx
+      .select({
+        id: schema.syncJobs.id,
+        eventType: schema.syncJobs.eventType,
+        localPath: schema.syncJobs.localPath,
+        remotePath: schema.syncJobs.remotePath,
+        status: schema.syncJobs.status,
+        nRetries: schema.syncJobs.nRetries,
+        retryAt: schema.syncJobs.retryAt,
+        lastError: schema.syncJobs.lastError,
+        createdAt: schema.syncJobs.createdAt,
+      })
+      .from(schema.syncJobs)
+      .leftJoin(
+        schema.processingQueue,
+        eq(schema.syncJobs.localPath, schema.processingQueue.localPath)
       )
-    )
-    .orderBy(schema.syncJobs.retryAt)
-    .limit(1)
-    .get();
+      .where(
+        and(
+          eq(schema.syncJobs.status, SyncJobStatus.PENDING),
+          lte(schema.syncJobs.retryAt, now),
+          isNull(schema.processingQueue.localPath)
+        )
+      )
+      .orderBy(schema.syncJobs.retryAt)
+      .limit(1)
+      .get();
+
+    // If no job found or dryRun, return without marking as PROCESSING
+    if (!job || dryRun) return job;
+
+    // Mark as PROCESSING and add to processing queue
+    tx.update(schema.syncJobs)
+      .set({ status: SyncJobStatus.PROCESSING })
+      .where(eq(schema.syncJobs.id, job.id))
+      .run();
+    tx.insert(schema.processingQueue)
+      .values({ localPath: job.localPath, startedAt: new Date() })
+      .onConflictDoUpdate({
+        target: schema.processingQueue.localPath,
+        set: { startedAt: new Date() },
+      })
+      .run();
+
+    return job;
+  });
 }
 
 /**
@@ -171,16 +195,18 @@ export function markJobSynced(jobId: number, localPath: string, dryRun: boolean)
 
   logger.debug(`Marking job ${jobId} as SYNCED (${localPath})`);
 
-  // Only set SYNCED if status is still PROCESSING
-  db.update(schema.syncJobs)
-    .set({ status: SyncJobStatus.SYNCED, lastError: null })
-    .where(and(eq(schema.syncJobs.id, jobId), eq(schema.syncJobs.status, SyncJobStatus.PROCESSING)))
-    .run();
+  // Transaction: update status and remove from processing queue
+  db.transaction((tx) => {
+    tx.update(schema.syncJobs)
+      .set({ status: SyncJobStatus.SYNCED, lastError: null })
+      .where(
+        and(eq(schema.syncJobs.id, jobId), eq(schema.syncJobs.status, SyncJobStatus.PROCESSING))
+      )
+      .run();
+    tx.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
+  });
 
-  // Always remove from processing queue
-  db.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
-
-  // Cleanup: if more than 256 SYNCED jobs, delete the oldest 128
+  // Separate transaction: cleanup old SYNCED jobs (if more than 256, delete oldest 128)
   const syncedCount = db
     .select()
     .from(schema.syncJobs)
@@ -188,18 +214,20 @@ export function markJobSynced(jobId: number, localPath: string, dryRun: boolean)
     .all().length;
 
   if (syncedCount > 256) {
-    const oldestSynced = db
-      .select({ id: schema.syncJobs.id })
-      .from(schema.syncJobs)
-      .where(eq(schema.syncJobs.status, SyncJobStatus.SYNCED))
-      .orderBy(schema.syncJobs.id)
-      .limit(128)
-      .all();
+    db.transaction((tx) => {
+      const oldestSynced = tx
+        .select({ id: schema.syncJobs.id })
+        .from(schema.syncJobs)
+        .where(eq(schema.syncJobs.status, SyncJobStatus.SYNCED))
+        .orderBy(schema.syncJobs.id)
+        .limit(128)
+        .all();
 
-    const idsToDelete = oldestSynced.map((row) => row.id);
-    db.delete(schema.syncJobs).where(inArray(schema.syncJobs.id, idsToDelete)).run();
+      const idsToDelete = oldestSynced.map((row) => row.id);
+      tx.delete(schema.syncJobs).where(inArray(schema.syncJobs.id, idsToDelete)).run();
 
-    logger.debug(`Cleaned up ${idsToDelete.length} old SYNCED jobs`);
+      logger.debug(`Cleaned up ${idsToDelete.length} old SYNCED jobs`);
+    });
   }
 }
 
@@ -219,14 +247,16 @@ export function markJobBlocked(
 
   logger.debug(`Marking job ${jobId} as BLOCKED (${localPath})`);
 
-  // Only set BLOCKED if status is still PROCESSING
-  db.update(schema.syncJobs)
-    .set({ status: SyncJobStatus.BLOCKED, lastError: error })
-    .where(and(eq(schema.syncJobs.id, jobId), eq(schema.syncJobs.status, SyncJobStatus.PROCESSING)))
-    .run();
-
-  // Always remove from processing queue
-  db.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
+  // Transaction: update status and remove from processing queue
+  db.transaction((tx) => {
+    tx.update(schema.syncJobs)
+      .set({ status: SyncJobStatus.BLOCKED, lastError: error })
+      .where(
+        and(eq(schema.syncJobs.id, jobId), eq(schema.syncJobs.status, SyncJobStatus.PROCESSING))
+      )
+      .run();
+    tx.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
+  });
 }
 
 /**
@@ -236,32 +266,6 @@ export function markJobBlocked(
 function setJobError(jobId: number, error: string, dryRun: boolean): void {
   if (dryRun) return;
   db.update(schema.syncJobs).set({ lastError: error }).where(eq(schema.syncJobs.id, jobId)).run();
-}
-
-/**
- * Mark a job as processing (in-flight).
- * Also upserts into processing_queue to track active processing.
- * No-op if dryRun is true.
- */
-export function markJobProcessing(jobId: number, localPath: string, dryRun: boolean): void {
-  if (dryRun) return;
-
-  logger.debug(`Marking job ${jobId} as PROCESSING (${localPath})`);
-
-  // Set status to PROCESSING
-  db.update(schema.syncJobs)
-    .set({ status: SyncJobStatus.PROCESSING })
-    .where(eq(schema.syncJobs.id, jobId))
-    .run();
-
-  // Upsert into processing queue with current time
-  db.insert(schema.processingQueue)
-    .values({ localPath, startedAt: new Date() })
-    .onConflictDoUpdate({
-      target: schema.processingQueue.localPath,
-      set: { startedAt: new Date() },
-    })
-    .run();
 }
 
 /** Categorize an error message and return category with max retries */
@@ -347,19 +351,20 @@ export function scheduleRetry(
     newRetries = nRetries + 1;
   }
 
+  // Transaction: update job and remove from processing queue
   const retryAt = new Date(Date.now() + delaySec * 1000);
 
-  db.update(schema.syncJobs)
-    .set({
-      status: SyncJobStatus.PENDING,
-      nRetries: newRetries,
-      retryAt,
-    })
-    .where(eq(schema.syncJobs.id, jobId))
-    .run();
-
-  // Remove from processing queue
-  db.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
+  db.transaction((tx) => {
+    tx.update(schema.syncJobs)
+      .set({
+        status: SyncJobStatus.PENDING,
+        nRetries: newRetries,
+        retryAt,
+      })
+      .where(eq(schema.syncJobs.id, jobId))
+      .run();
+    tx.delete(schema.processingQueue).where(eq(schema.processingQueue.localPath, localPath)).run();
+  });
 
   logger.info(`Job ${jobId} scheduled for retry in ${Math.round(delaySec)}s`);
 }
@@ -412,12 +417,10 @@ function getErrorMessage(error: unknown): string {
  * Returns true if a job was processed, false if queue is empty.
  */
 export async function processNextJob(client: ProtonDriveClient, dryRun: boolean): Promise<boolean> {
-  const job = getNextPendingJob();
+  const job = getNextPendingJob(dryRun);
   if (!job) return false;
 
   const { id, eventType, localPath, remotePath, nRetries } = job;
-
-  markJobProcessing(id, localPath, dryRun);
 
   try {
     if (eventType === SyncEventType.DELETE) {
@@ -470,7 +473,8 @@ export async function processNextJob(client: ProtonDriveClient, dryRun: boolean)
 }
 
 /**
- * Process all pending jobs in the queue.
+ * Process all pending jobs in the queue with concurrency.
+ * Stops processing if a stop signal is received.
  * Returns the number of jobs processed.
  */
 export async function processAllPendingJobs(
@@ -486,8 +490,30 @@ export async function processAllPendingJobs(
   registerSignalHandler('stop', handleStop);
 
   try {
-    while (!stopRequested && (await processNextJob(client, dryRun))) {
-      count++;
+    // Process jobs with up to SYNC_CONCURRENCY in parallel using a worker pool pattern
+    const activeJobs = new Set<Promise<boolean>>();
+
+    const startNextJob = (): void => {
+      if (stopRequested) return;
+      const jobPromise = processNextJob(client, dryRun).then((processed) => {
+        activeJobs.delete(jobPromise);
+        if (processed) {
+          count++;
+          startNextJob(); // Replenish the pool
+        }
+        return processed;
+      });
+      activeJobs.add(jobPromise);
+    };
+
+    // Start initial batch of concurrent jobs
+    for (let i = 0; i < SYNC_CONCURRENCY; i++) {
+      startNextJob();
+    }
+
+    // Wait for pool to drain (all jobs complete or no more jobs available)
+    while (activeJobs.size > 0) {
+      await Promise.race(activeJobs);
     }
   } finally {
     unregisterSignalHandler('stop', handleStop);
