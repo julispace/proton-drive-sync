@@ -95,13 +95,10 @@ function hasDiffChanges(diff: DashboardDiff): boolean {
  *
  * Event types and their effects on stats:
  * - enqueue: pending++ (job added to queue)
+ * - processing: pending--, processing++ (job picked up for processing)
  * - synced: processing--, synced++ (job completed)
  * - blocked: processing--, blocked++ (job failed permanently)
  * - retry: processing--, pending++ (job scheduled for retry)
- *
- * Note: When a job is picked up for processing, we don't get an event -
- * the getNextPendingJob() call handles that. So we track processing
- * additions via the job lists, not stats deltas.
  */
 function accumulateEvent(event: JobEvent): void {
   const job: DashboardJob = {
@@ -114,6 +111,12 @@ function accumulateEvent(event: JobEvent): void {
   switch (event.type) {
     case 'enqueue':
       accumulatedDiff.statsDelta.pending++;
+      break;
+
+    case 'processing':
+      accumulatedDiff.statsDelta.pending--;
+      accumulatedDiff.statsDelta.processing++;
+      accumulatedDiff.addProcessing.push(job);
       break;
 
     case 'synced':

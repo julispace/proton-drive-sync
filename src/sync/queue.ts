@@ -16,7 +16,7 @@ import { logger, isDebugEnabled } from '../logger.js';
 
 export const jobEvents = new EventEmitter();
 
-export type JobEventType = 'enqueue' | 'synced' | 'blocked' | 'retry';
+export type JobEventType = 'enqueue' | 'processing' | 'synced' | 'blocked' | 'retry';
 
 export interface JobEvent {
   type: JobEventType;
@@ -279,6 +279,15 @@ export function getNextPendingJob(dryRun: boolean = false): Job | undefined {
         set: { startedAt: new Date() },
       })
       .run();
+
+    // Emit event for dashboard
+    jobEvents.emit('job', {
+      type: 'processing',
+      jobId: job.id,
+      localPath: job.localPath,
+      remotePath: job.remotePath,
+      timestamp: new Date(),
+    } satisfies JobEvent);
 
     return job;
   });
