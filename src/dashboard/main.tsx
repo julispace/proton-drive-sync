@@ -172,7 +172,7 @@ function renderProcessingList(jobs: DashboardJob[]): string {
       (job) => `
 <div class="px-3 py-2.5 rounded-lg bg-gray-900/50 border border-gray-700/50 hover:border-blue-500/30 transition-colors group">
   <div class="flex items-start gap-3">
-    <svg class="w-4 h-4 text-blue-500 mt-0.5 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg class="w-4 h-4 text-blue-500 mt-0.5 shrink-0 ${currentIsPaused ? '' : 'animate-spin'}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
     </svg>
     <div class="min-w-0 flex-1">
@@ -592,6 +592,8 @@ app.get('/api/events', async (c) => {
       // Forward full status: auth, paused badge, and heartbeat to keep connection alive
       stream.writeSSE({ event: 'auth', data: renderAuthStatus(status.auth) });
       stream.writeSSE({ event: 'paused', data: renderPausedBadge(status.isPaused) });
+      // Re-render pending list to update spin animation based on pause state
+      stream.writeSSE({ event: 'pending', data: renderPendingList(getPendingJobs(50)) });
       stream.writeSSE({ event: 'heartbeat', data: '' });
     };
 
