@@ -31,6 +31,7 @@ program
   .command('reset')
   .description('Reset sync state')
   .option('-y, --yes', 'Skip confirmation prompt')
+  .option('--signals', 'Clear only the signals table')
   .action(resetCommand);
 
 program

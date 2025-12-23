@@ -1,24 +1,20 @@
 /**
- * Reset Command - Delete sync state
+ * Reset Command - Clear sync state from database
  */
 
-import { existsSync, unlinkSync } from 'fs';
 import { confirm } from '@inquirer/prompts';
-import { STATE_DIR } from '../state.js';
-import { join } from 'path';
+import { db, schema } from '../db/index.js';
 
-const STATE_FILE = join(STATE_DIR, 'state.json');
-
-export async function resetCommand(options: { yes: boolean }): Promise<void> {
-  if (!existsSync(STATE_FILE)) {
-    console.log('No state file found. Nothing to reset.');
-    return;
-  }
+export async function resetCommand(options: { yes: boolean; signals: boolean }): Promise<void> {
+  const signalsOnly = options.signals;
 
   if (!options.yes) {
+    const message = signalsOnly
+      ? 'This will clear all signals from the database. Continue?'
+      : 'This will reset the sync state, forcing proton-drive-sync to sync all files as if it were first launched. Continue?';
+
     const confirmed = await confirm({
-      message:
-        'This will reset the sync state, forcing proton-drive-sync to sync all files as if it were first launched. Continue?',
+      message,
       default: false,
     });
 
@@ -28,6 +24,14 @@ export async function resetCommand(options: { yes: boolean }): Promise<void> {
     }
   }
 
-  unlinkSync(STATE_FILE);
-  console.log('State reset.');
+  if (signalsOnly) {
+    db.delete(schema.signals).run();
+    console.log('Signals cleared.');
+  } else {
+    // Clear all sync-related tables
+    db.delete(schema.clocks).run();
+    db.delete(schema.syncJobs).run();
+    db.delete(schema.processingQueue).run();
+    console.log('State reset.');
+  }
 }
