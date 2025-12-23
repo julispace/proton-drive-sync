@@ -706,6 +706,8 @@ export class ProtonAuth {
       const error = new Error('2FA required') as ApiError;
       error.requires2FA = true;
       error.twoFAInfo = authResponse['2FA'];
+      // Store password for use after 2FA
+      this.session.password = password;
       throw error;
     }
 
@@ -742,6 +744,11 @@ export class ProtonAuth {
     }
     if (response.RefreshToken) {
       this.session.RefreshToken = response.RefreshToken;
+    }
+
+    // Now fetch user data and decrypt keys (this was deferred during login due to 2FA)
+    if (this.session.password) {
+      await this._fetchUserAndKeys(this.session.password);
     }
 
     return this.session;
