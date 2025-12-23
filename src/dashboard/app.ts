@@ -1064,6 +1064,8 @@ app.get('/api/events', async (c) => {
       stream.writeSSE({ event: 'paused', data: renderPausedBadge(status.isPaused) });
       stream.writeSSE({ event: 'pause-button', data: renderPauseButton(status.isPaused) });
       stream.writeSSE({ event: 'processing-title', data: renderProcessingTitle(status.isPaused) });
+      // Re-render processing list to update icons based on pause state
+      stream.writeSSE({ event: 'processing', data: renderProcessingList(getProcessingJobs()) });
       // Re-render pending list to update spin animation based on pause state
       stream.writeSSE({ event: 'pending', data: renderPendingList(getPendingJobs(50)) });
       stream.writeSSE({ event: 'heartbeat', data: '' });
