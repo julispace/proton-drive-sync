@@ -7,61 +7,47 @@ import keychain from 'keychain';
 import { promisify } from 'util';
 
 const KEYCHAIN_SERVICE = 'proton-drive-sync';
-const KEYCHAIN_ACCOUNT_PREFIX = 'proton-drive-sync:';
+const KEYCHAIN_ACCOUNT = 'proton-drive-sync:tokens';
 
 const keychainGetPassword = promisify(keychain.getPassword).bind(keychain);
 const keychainSetPassword = promisify(keychain.setPassword).bind(keychain);
 const keychainDeletePassword = promisify(keychain.deletePassword).bind(keychain);
 
+/** Tokens stored in keychain for session reuse */
 export interface StoredCredentials {
-  username: string;
-  password: string;
+  UID: string;
+  AccessToken: string;
+  RefreshToken: string;
+  SaltedKeyPass?: string;
 }
 
 export async function getStoredCredentials(): Promise<StoredCredentials | null> {
   try {
-    const username = await keychainGetPassword({
-      account: `${KEYCHAIN_ACCOUNT_PREFIX}username`,
+    const data = await keychainGetPassword({
+      account: KEYCHAIN_ACCOUNT,
       service: KEYCHAIN_SERVICE,
     });
-    const pwd = await keychainGetPassword({
-      account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
-      service: KEYCHAIN_SERVICE,
-    });
-    return { username, password: pwd };
+    return JSON.parse(data) as StoredCredentials;
   } catch {
     return null;
   }
 }
 
-export async function storeCredentials(username: string, pwd: string): Promise<void> {
+export async function storeCredentials(credentials: StoredCredentials): Promise<void> {
   await keychainSetPassword({
-    account: `${KEYCHAIN_ACCOUNT_PREFIX}username`,
+    account: KEYCHAIN_ACCOUNT,
     service: KEYCHAIN_SERVICE,
-    password: username,
-  });
-  await keychainSetPassword({
-    account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
-    service: KEYCHAIN_SERVICE,
-    password: pwd,
+    password: JSON.stringify(credentials),
   });
 }
 
 export async function deleteStoredCredentials(): Promise<void> {
   try {
     await keychainDeletePassword({
-      account: `${KEYCHAIN_ACCOUNT_PREFIX}username`,
+      account: KEYCHAIN_ACCOUNT,
       service: KEYCHAIN_SERVICE,
     });
   } catch {
-    // Ignore
-  }
-  try {
-    await keychainDeletePassword({
-      account: `${KEYCHAIN_ACCOUNT_PREFIX}password`,
-      service: KEYCHAIN_SERVICE,
-    });
-  } catch {
-    // Ignore
+    // Ignore - may not exist
   }
 }

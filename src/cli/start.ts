@@ -13,7 +13,7 @@ import {
   stopSignalListener,
   registerSignalHandler,
 } from '../signals.js';
-import { getStoredCredentials, createClient, type ProtonDriveClient } from './auth.js';
+import { getStoredCredentials, createClientFromTokens, type ProtonDriveClient } from './auth.js';
 import { startDashboard, stopDashboard, sendAuthStatus } from '../dashboard/server.js';
 import { runOneShotSync, runWatchMode } from '../sync/index.js';
 
@@ -33,7 +33,7 @@ interface StartOptions {
 // ============================================================================
 
 /**
- * Authenticate using stored credentials with retry and exponential backoff.
+ * Authenticate using stored tokens with retry and exponential backoff.
  * Sends status updates to the dashboard via IPC.
  * @param sdkDebug - Enable debug logging for the Proton SDK
  */
@@ -45,21 +45,18 @@ async function authenticateWithStatus(sdkDebug = false): Promise<ProtonDriveClie
     throw new Error('No credentials found. Run `proton-drive-sync auth` first.');
   }
 
-  logger.info(`Authenticating as ${storedCreds.username}...`);
+  logger.info('Authenticating with stored tokens...');
 
   // Retry with exponential backoff: 1s, 4s, 16s, 64s, 256s
   const MAX_RETRIES = 5;
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    sendAuthStatus({
-      status: 'authenticating',
-      username: storedCreds.username,
-    });
+    sendAuthStatus({ status: 'authenticating' });
 
     try {
-      const client = await createClient(storedCreds.username, storedCreds.password, sdkDebug);
-      sendAuthStatus({ status: 'authenticated', username: storedCreds.username });
+      const client = await createClientFromTokens(storedCreds, sdkDebug);
+      sendAuthStatus({ status: 'authenticated' });
       logger.info('Authenticated.');
       return client;
     } catch (error) {
@@ -67,19 +64,13 @@ async function authenticateWithStatus(sdkDebug = false): Promise<ProtonDriveClie
 
       // Only retry on network errors (fetch failed)
       if (!lastError.message.includes('fetch failed')) {
-        sendAuthStatus({
-          status: 'failed',
-          username: storedCreds.username,
-        });
+        sendAuthStatus({ status: 'failed' });
         throw lastError;
       }
 
       if (attempt < MAX_RETRIES - 1) {
         const delayMs = Math.pow(4, attempt) * 1000; // 1s, 4s, 16s, 64s
-        sendAuthStatus({
-          status: 'authenticating',
-          username: storedCreds.username,
-        });
+        sendAuthStatus({ status: 'authenticating' });
         logger.warn(
           `Authentication failed (attempt ${attempt + 1}/${MAX_RETRIES}), retrying in ${delayMs / 1000}s...`
         );
@@ -88,10 +79,7 @@ async function authenticateWithStatus(sdkDebug = false): Promise<ProtonDriveClie
     }
   }
 
-  sendAuthStatus({
-    status: 'failed',
-    username: storedCreds.username,
-  });
+  sendAuthStatus({ status: 'failed' });
   throw lastError;
 }
 
