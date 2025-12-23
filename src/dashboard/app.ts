@@ -779,23 +779,28 @@ async function composePage(
   contentHtml: string,
   options: {
     title: string;
-    activeTab: 'home' | 'settings';
+    activeTab: 'home' | 'settings' | 'about';
     pageScripts: string;
   }
 ): Promise<string> {
   const homeTabClass =
     options.activeTab === 'home'
-      ? 'bg-gray-700 text-white'
-      : 'text-gray-400 hover:text-white hover:bg-gray-700/50';
+      ? 'text-white border-b-2 border-white'
+      : 'text-gray-400 hover:text-white';
   const settingsTabClass =
     options.activeTab === 'settings'
-      ? 'bg-gray-700 text-white'
-      : 'text-gray-400 hover:text-white hover:bg-gray-700/50';
+      ? 'text-white border-b-2 border-white'
+      : 'text-gray-400 hover:text-white';
+  const aboutTabClass =
+    options.activeTab === 'about'
+      ? 'text-white border-b-2 border-white'
+      : 'text-gray-400 hover:text-white';
 
   return layoutHtml
     .replace('{{TITLE}}', options.title)
     .replace('{{HOME_TAB_CLASS}}', homeTabClass)
     .replace('{{SETTINGS_TAB_CLASS}}', settingsTabClass)
+    .replace('{{ABOUT_TAB_CLASS}}', aboutTabClass)
     .replace('{{CONTENT}}', contentHtml)
     .replace('{{PAGE_SCRIPTS}}', options.pageScripts);
 }
@@ -830,6 +835,21 @@ app.get('/settings', async (c) => {
     title: 'Settings - Proton Drive Sync',
     activeTab: 'settings',
     pageScripts: SETTINGS_PAGE_SCRIPTS,
+  });
+  return c.html(html);
+});
+
+// Serve about page
+app.get('/about', async (c) => {
+  const layout = await getLayout();
+  let content = await readFile(join(__dirname, 'about.html'), 'utf-8');
+  // Inject version from package.json
+  const pkg = JSON.parse(await readFile(join(__dirname, '../../package.json'), 'utf-8'));
+  content = content.replace('{{VERSION}}', pkg.version);
+  const html = await composePage(layout, content, {
+    title: 'About - Proton Drive Sync',
+    activeTab: 'about',
+    pageScripts: '',
   });
   return c.html(html);
 });
