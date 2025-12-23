@@ -592,7 +592,7 @@ export function getPendingJobs(limit: number = 50) {
  * Get jobs scheduled for retry (retryAt > now).
  */
 export function getRetryJobs(limit: number = 50) {
-  const now = new Date().toISOString();
+  const nowSeconds = Math.floor(Date.now() / 1000);
   return db
     .select({
       id: schema.syncJobs.id,
@@ -607,7 +607,7 @@ export function getRetryJobs(limit: number = 50) {
     .where(
       and(
         eq(schema.syncJobs.status, SyncJobStatus.PENDING),
-        sql`${schema.syncJobs.retryAt} > ${now}`
+        sql`${schema.syncJobs.retryAt} > ${nowSeconds}`
       )
     )
     .orderBy(schema.syncJobs.retryAt)

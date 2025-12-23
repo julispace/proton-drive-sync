@@ -25,7 +25,7 @@ import {
   getPendingJobs,
   getRetryJobs,
 } from '../sync/queue.js';
-import type { DashboardDiff, AuthStatusUpdate, DashboardJob } from './server.js';
+import type { DashboardDiff, AuthStatusUpdate, DashboardJob, DashboardStatus } from './server.js';
 import type { Config } from '../config.js';
 
 // ============================================================================
@@ -51,34 +51,37 @@ try {
 
 // Local event emitter to bridge IPC messages to SSE streams
 const stateDiffEvents = new EventEmitter();
-const authEvents = new EventEmitter();
+const statusEvents = new EventEmitter();
 
-// Current auth status (for API endpoint)
+// Current status (for API endpoint)
 let currentAuthStatus: AuthStatusUpdate = { status: 'pending' };
+let currentIsPaused = false;
 let currentConfig: Config | null = null;
 
 // Listen for diff events from parent process via IPC
 process.on(
   'message',
-  (
-    msg: {
-      type: string;
-      diff?: DashboardDiff;
-      dryRun?: boolean;
-      config?: Config;
-    } & Partial<AuthStatusUpdate>
-  ) => {
+  (msg: {
+    type: string;
+    diff?: DashboardDiff;
+    dryRun?: boolean;
+    config?: Config;
+    auth?: AuthStatusUpdate;
+    isPaused?: boolean;
+  }) => {
     if (msg.type === 'job_state_diff' && msg.diff) {
       stateDiffEvents.emit('job_state_diff', msg.diff);
     } else if (msg.type === 'config') {
       if (msg.dryRun !== undefined) isDryRun = msg.dryRun;
       if (msg.config) currentConfig = msg.config;
-    } else if (msg.type === 'auth') {
-      currentAuthStatus = {
-        status: msg.status!,
-        username: msg.username,
-      };
-      authEvents.emit('auth', currentAuthStatus);
+    } else if (msg.type === 'status') {
+      if (msg.auth) {
+        currentAuthStatus = msg.auth;
+      }
+      if (msg.isPaused !== undefined) {
+        currentIsPaused = msg.isPaused;
+      }
+      statusEvents.emit('status', { auth: currentAuthStatus, isPaused: currentIsPaused });
     }
   }
 );
@@ -343,6 +346,18 @@ function renderAuthStatus(auth: AuthStatusUpdate): string {
 </div>`;
 }
 
+/** Render paused badge HTML - only shown when paused */
+function renderPausedBadge(isPaused: boolean): string {
+  if (!isPaused) return '';
+  return `
+<div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-amber-500/30 bg-amber-500/10">
+  <svg class="h-3 w-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+  <span class="text-xs font-medium text-amber-400">Paused</span>
+</div>`;
+}
+
 /** Render dry-run banner HTML */
 function renderDryRunBanner(dryRun: boolean): string {
   if (!dryRun) return '';
@@ -573,28 +588,26 @@ app.get('/api/events', async (c) => {
       stream.writeSSE({ event: 'retry-count', data: `${getRetryJobs(50).length} items` });
     };
 
-    const authHandler = (auth: AuthStatusUpdate) => {
-      stream.writeSSE({ event: 'auth', data: renderAuthStatus(auth) });
+    const statusHandler = (status: DashboardStatus) => {
+      // Forward full status: auth, paused badge, and heartbeat to keep connection alive
+      stream.writeSSE({ event: 'auth', data: renderAuthStatus(status.auth) });
+      stream.writeSSE({ event: 'paused', data: renderPausedBadge(status.isPaused) });
+      stream.writeSSE({ event: 'heartbeat', data: '' });
     };
 
     stateDiffEvents.on('job_state_diff', stateDiffHandler);
-    authEvents.on('auth', authHandler);
+    statusEvents.on('status', statusHandler);
 
     // Send initial state
     const counts = getJobCounts();
     await stream.writeSSE({ event: 'stats', data: renderStats(counts) });
     await stream.writeSSE({ event: 'auth', data: renderAuthStatus(currentAuthStatus) });
-
-    // Keep connection alive with heartbeat
-    const heartbeat = setInterval(() => {
-      stream.writeSSE({ event: 'heartbeat', data: '' });
-    }, 30000);
+    await stream.writeSSE({ event: 'paused', data: renderPausedBadge(currentIsPaused) });
 
     // Cleanup on close
     stream.onAbort(() => {
-      clearInterval(heartbeat);
       stateDiffEvents.off('job_state_diff', stateDiffHandler);
-      authEvents.off('auth', authHandler);
+      statusEvents.off('status', statusHandler);
     });
 
     // Keep the stream open

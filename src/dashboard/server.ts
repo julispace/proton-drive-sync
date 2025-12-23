@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { watch } from 'fs';
 import { jobEvents, type JobEvent } from '../sync/queue.js';
 import { logger } from '../logger.js';
+import { isPaused } from '../flags.js';
 import type { Config } from '../config.js';
 
 // ============================================================================
@@ -24,7 +25,7 @@ const __dirname = dirname(__filename);
 const DIFF_ACCUMULATE_MS = 100;
 
 // ============================================================================
-// Auth Status Types
+// Status Types
 // ============================================================================
 
 export type AuthStatus = 'pending' | 'authenticating' | 'authenticated' | 'failed';
@@ -32,6 +33,12 @@ export type AuthStatus = 'pending' | 'authenticating' | 'authenticated' | 'faile
 export interface AuthStatusUpdate {
   status: AuthStatus;
   username?: string;
+}
+
+/** Status struct sent on every heartbeat to the dashboard */
+export interface DashboardStatus {
+  auth: AuthStatusUpdate;
+  isPaused: boolean;
 }
 
 // ============================================================================
@@ -156,9 +163,13 @@ let jobEventHandler: ((event: JobEvent) => void) | null = null;
 let accumulatedDiff: DashboardDiff = createEmptyDiff();
 let diffTimeout: ReturnType<typeof setTimeout> | null = null;
 let fileWatcher: ReturnType<typeof watch> | null = null;
+let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 let currentConfig: Config | null = null;
 let currentDryRun = false;
 let currentAuthStatus: AuthStatusUpdate = { status: 'pending' };
+
+// Heartbeat interval (1 second) - sends current status to dashboard
+const HEARTBEAT_INTERVAL_MS = 1000;
 
 /**
  * Start the dashboard in a separate process.
@@ -199,10 +210,14 @@ export function startDashboard(config: Config, dryRun = false): void {
       const hotReloadMsg = isDevMode ? ' (hot reload enabled)' : '';
       logger.info(`Dashboard running at http://localhost:${msg.port}${hotReloadMsg}`);
 
-      // Send current auth status when dashboard is ready
-      if (dashboardProcess?.connected) {
-        dashboardProcess.send({ type: 'auth', ...currentAuthStatus });
+      // Send initial status when dashboard is ready
+      sendStatusToDashboard();
+
+      // Start heartbeat loop to continuously send status
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
       }
+      heartbeatInterval = setInterval(sendStatusToDashboard, HEARTBEAT_INTERVAL_MS);
     }
   });
 
@@ -256,6 +271,12 @@ export function startDashboard(config: Config, dryRun = false): void {
  * Stop the dashboard process.
  */
 export function stopDashboard(): void {
+  // Stop heartbeat
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+
   if (fileWatcher) {
     fileWatcher.close();
     fileWatcher = null;
@@ -340,11 +361,25 @@ function restartDashboard(): void {
 
 /**
  * Send auth status update to the dashboard process.
+ * This updates the stored auth status and triggers a status send.
  */
 export function sendAuthStatus(update: AuthStatusUpdate): void {
   // Store current auth status for hot reload
   currentAuthStatus = update;
+  // Immediately send updated status (don't wait for next heartbeat)
+  sendStatusToDashboard();
+}
+
+/**
+ * Send current status (auth + isPaused) to the dashboard subprocess.
+ * Called on heartbeat interval and when auth status changes.
+ */
+function sendStatusToDashboard(): void {
   if (dashboardProcess?.connected) {
-    dashboardProcess.send({ type: 'auth', ...update });
+    const status: DashboardStatus = {
+      auth: currentAuthStatus,
+      isPaused: isPaused(),
+    };
+    dashboardProcess.send({ type: 'status', ...status });
   }
 }

@@ -109,6 +109,8 @@ Run directly with tsx (no build step required):
 make dev ARGS="start"
 ```
 
+> **Note:** In dev mode, use `Ctrl+C` to stop the process. The `proton-drive-sync stop` command does not work with `make dev` because `tsx watch` keeps the process alive.
+
 Or rebuild after changes:
 
 ```bash
