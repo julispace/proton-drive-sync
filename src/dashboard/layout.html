@@ -29,7 +29,7 @@
       .tab-label {
         display: none;
       }
-      @media (min-width: 1150px) {
+      @media (min-width: 1200px) {
         .tab-label {
           display: inline;
         }
@@ -38,7 +38,7 @@
       .github-text {
         display: none;
       }
-      @media (min-width: 900px) {
+      @media (min-width: 1100px) {
         .github-text {
           display: inline;
         }
@@ -47,7 +47,7 @@
       .header-title {
         display: none;
       }
-      @media (min-width: 950px) {
+      @media (min-width: 1000px) {
         .header-title {
           display: block;
         }
@@ -56,7 +56,7 @@
       .auth-badge {
         display: none;
       }
-      @media (min-width: 800px) {
+      @media (min-width: 900px) {
         .auth-badge {
           display: block;
         }
@@ -65,11 +65,30 @@
       .connected-badge {
         display: none;
       }
-      @media (min-width: 500px) {
+      @media (min-width: 600px) {
         .connected-badge {
           display: flex;
         }
       }
+      /* Hide GitHub badge first (least priority in header) */
+      .github-badge-header {
+        display: none;
+      }
+      @media (min-width: 1400px) {
+        .github-badge-header {
+          display: flex;
+        }
+      }
+      /* Hide X badge second */
+      .x-badge-header {
+        display: none;
+      }
+      @media (min-width: 1300px) {
+        .x-badge-header {
+          display: flex;
+        }
+      }
+      /* Coffee badge always visible (when badges are shown) */
       /* GitHub badge star hover effect */
       .github-badge:hover [data-lucide='star'] {
         color: #facc15; /* yellow-400 */
@@ -143,7 +162,7 @@
           <nav class="flex items-center gap-1">
             <a
               href="/"
-              class="flex items-center gap-1.5 px-2 py-1 sm:py-1.5 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap {{HOME_TAB_CLASS}}"
+              class="{{HIDE_HOME_TAB}} flex items-center gap-1.5 px-2 py-1 sm:py-1.5 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap {{HOME_TAB_CLASS}}"
             >
               <i data-lucide="house" class="w-4 h-4 shrink-0"></i>
               <!-- Tab labels: first to collapse (below 850px) -->
@@ -169,12 +188,23 @@
         </div>
 
         <div class="flex items-center gap-2 sm:gap-4 shrink-0">
-          <!-- GitHub Stars Badge and Buy Me a Coffee (hidden on about page) -->
-          <div class="flex items-center gap-2 sm:gap-4 {{HIDE_BADGES}}">
+          <!-- X Follow, GitHub Stars Badge and Buy Me a Coffee (hidden on about page) -->
+          <div class="flex items-center gap-1 sm:gap-2 {{HIDE_BADGES}}">
+            <!-- X (Twitter) Follow Badge -->
+            <a
+              href="https://x.com/TheBitFlipper"
+              target="_blank"
+              class="x-badge-header h-9 flex items-center gap-2 px-3 bg-gray-900 border border-gray-600 rounded-full hover:border-gray-500 transition-colors"
+            >
+              <img src="/assets/x-logo.svg" alt="X" class="w-4 h-4" />
+              <span class="github-text text-gray-300 text-sm font-medium">Follow</span>
+            </a>
+
+            <!-- GitHub Stars Badge -->
             <a
               href="https://github.com/DamianB-BitFlipper/proton-drive-sync"
               target="_blank"
-              class="github-badge h-9 flex items-center gap-2 px-3 bg-gray-900 border border-gray-600 rounded-full hover:border-gray-500 transition-colors"
+              class="github-badge-header h-9 flex items-center gap-2 px-3 bg-gray-900 border border-gray-600 rounded-full hover:border-gray-500 transition-colors"
             >
               <img src="/assets/github.svg" alt="GitHub" class="w-4 h-4" />
               <span class="github-text text-gray-300 text-sm font-medium">GitHub</span>

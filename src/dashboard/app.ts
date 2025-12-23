@@ -26,7 +26,7 @@ import {
   getRetryJobs,
   retryAllNow,
 } from '../sync/queue.js';
-import { FLAGS, setFlag, clearFlag } from '../flags.js';
+import { FLAGS, setFlag, clearFlag, hasFlag } from '../flags.js';
 import { sendSignal } from '../signals.js';
 import { CONFIG_FILE, CONFIG_CHECK_SIGNAL } from '../config.js';
 import type { DashboardDiff, AuthStatusUpdate, DashboardJob, DashboardStatus } from './server.js';
@@ -616,6 +616,14 @@ const SETTINGS_PAGE_SCRIPTS = `
       document.getElementById('concurrency-value').textContent = config.sync_concurrency || 8;
       syncDirs = config.sync_dirs || [];
       renderSyncDirs();
+
+      // Update button text for onboarding
+      if (window.__isOnboarding) {
+        document.getElementById('save-button-text').textContent = 'Next';
+        document.getElementById('save-button-icon-check').classList.add('hidden');
+        document.getElementById('save-button-icon-arrow').classList.remove('hidden');
+        lucide.createIcons();
+      }
     } catch (err) {
       console.error('Failed to load config:', err);
     }
@@ -743,9 +751,14 @@ const SETTINGS_PAGE_SCRIPTS = `
       if (result.success) {
         saveStatus.textContent = 'Saved successfully!';
         saveStatus.className = 'text-sm text-green-400';
-        originalConfig = JSON.parse(JSON.stringify(config));
-        syncDirs = config.sync_dirs;
-        renderSyncDirs();
+        // Redirect to about page after successful save only during onboarding
+        if (window.__isOnboarding) {
+          window.location.href = '/about';
+        } else {
+          originalConfig = JSON.parse(JSON.stringify(config));
+          syncDirs = config.sync_dirs;
+          renderSyncDirs();
+        }
       } else {
         saveStatus.textContent = result.error || 'Failed to save';
         saveStatus.className = 'text-sm text-red-400';
@@ -781,8 +794,10 @@ async function composePage(
     title: string;
     activeTab: 'home' | 'settings' | 'about';
     pageScripts: string;
+    isOnboarded?: boolean;
   }
 ): Promise<string> {
+  const isOnboarded = options.isOnboarded ?? hasFlag(FLAGS.ONBOARDED);
   const homeTabClass =
     options.activeTab === 'home'
       ? 'text-white border-b-2 border-white'
@@ -801,6 +816,7 @@ async function composePage(
     .replace('{{HOME_TAB_CLASS}}', homeTabClass)
     .replace('{{SETTINGS_TAB_CLASS}}', settingsTabClass)
     .replace('{{ABOUT_TAB_CLASS}}', aboutTabClass)
+    .replace('{{HIDE_HOME_TAB}}', isOnboarded ? '' : 'hidden')
     .replace('{{HIDE_BADGES}}', options.activeTab === 'about' ? 'hidden' : '')
     .replace('{{CONTENT}}', contentHtml)
     .replace('{{PAGE_SCRIPTS}}', options.pageScripts);
@@ -818,6 +834,10 @@ async function getLayout(): Promise<string> {
 
 // Serve dashboard HTML at root
 app.get('/', async (c) => {
+  // Redirect to settings if not onboarded
+  if (!hasFlag(FLAGS.ONBOARDED)) {
+    return c.redirect('/settings');
+  }
   const layout = await getLayout();
   const content = await readFile(join(__dirname, 'home.html'), 'utf-8');
   const html = await composePage(layout, content, {
@@ -832,10 +852,13 @@ app.get('/', async (c) => {
 app.get('/settings', async (c) => {
   const layout = await getLayout();
   const content = await readFile(join(__dirname, 'config.html'), 'utf-8');
+  const isOnboarding = !hasFlag(FLAGS.ONBOARDED);
+  const onboardingScript = `<script>window.__isOnboarding = ${isOnboarding};</script>`;
   const html = await composePage(layout, content, {
     title: 'Settings - Proton Drive Sync',
     activeTab: 'settings',
-    pageScripts: SETTINGS_PAGE_SCRIPTS,
+    pageScripts: onboardingScript + SETTINGS_PAGE_SCRIPTS,
+    isOnboarded: !isOnboarding,
   });
   return c.html(html);
 });
@@ -847,10 +870,36 @@ app.get('/about', async (c) => {
   // Inject version from package.json
   const pkg = JSON.parse(await readFile(join(__dirname, '../../package.json'), 'utf-8'));
   content = content.replace('{{VERSION}}', pkg.version);
+  const isOnboarded = hasFlag(FLAGS.ONBOARDED);
+  content = content.replace('{{HIDE_START_BUTTON}}', isOnboarded ? 'hidden' : '');
+  const aboutPageScripts = `
+<script>
+  async function startUsing() {
+    const button = document.getElementById('start-using-button');
+    button.disabled = true;
+    button.innerHTML = '<span class="animate-spin">⏳</span> Starting...';
+    
+    try {
+      const response = await fetch('/api/onboard', { method: 'POST' });
+      if (response.ok) {
+        window.location.href = '/';
+      } else {
+        button.disabled = false;
+        button.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i> Start Using';
+        lucide.createIcons();
+      }
+    } catch (err) {
+      button.disabled = false;
+      button.innerHTML = '<i data-lucide="rocket" class="w-5 h-5"></i> Start Using';
+      lucide.createIcons();
+    }
+  }
+</script>`;
   const html = await composePage(layout, content, {
     title: 'About - Proton Drive Sync',
     activeTab: 'about',
-    pageScripts: '',
+    pageScripts: aboutPageScripts,
+    isOnboarded,
   });
   return c.html(html);
 });
@@ -939,6 +988,12 @@ app.get('/api/fragments/pause-button', (c) => {
 
 app.get('/api/fragments/retry-all-button', (c) => {
   return c.html(renderRetryAllButton(getRetryJobs(1).length > 0));
+});
+
+/** Set onboarded flag */
+app.post('/api/onboard', (c) => {
+  setFlag(FLAGS.ONBOARDED);
+  return c.json({ success: true });
 });
 
 /** Toggle pause state */

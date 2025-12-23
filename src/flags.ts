@@ -11,6 +11,7 @@ import { db, schema } from './db/index.js';
 export const FLAGS = {
   RUNNING: 'running',
   PAUSED: 'paused',
+  ONBOARDED: 'onboarded',
 } as const;
 
 /**
