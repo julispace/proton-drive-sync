@@ -32,6 +32,7 @@ program
   .description('Reset sync state')
   .option('-y, --yes', 'Skip confirmation prompt')
   .option('--signals', 'Clear only the signals table')
+  .option('--retries', 'Remove only sync jobs pending retry')
   .action(resetCommand);
 
 program

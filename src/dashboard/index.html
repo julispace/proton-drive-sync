@@ -8,6 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script src="https://unpkg.com/idiomorph@0.3.0/dist/idiomorph-ext.min.js"></script>
     <style>
       .custom-scrollbar::-webkit-scrollbar {
         width: 8px;
@@ -22,9 +23,6 @@
       }
       .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: #6b7280;
-      }
-      .htmx-settling {
-        opacity: 0.8;
       }
     </style>
     <script>
@@ -54,7 +52,7 @@
       };
     </script>
   </head>
-  <body class="h-full flex flex-col" hx-ext="sse" sse-connect="/api/events">
+  <body class="h-full flex flex-col" hx-ext="sse,morph" sse-connect="/api/events">
     <!-- Dry-Run Warning Banner -->
     <div
       id="dry-run-banner"
@@ -81,7 +79,7 @@
             id="auth-status"
             hx-get="/api/fragments/auth-status"
             hx-trigger="load"
-            hx-swap="innerHTML"
+            hx-swap="morph:innerHTML"
             sse-swap="auth"
           ></div>
 
@@ -109,8 +107,9 @@
           id="stats"
           hx-get="/api/fragments/stats"
           hx-trigger="load"
-          hx-swap="innerHTML"
+          hx-swap="morph:innerHTML"
           sse-swap="stats"
+          hx-swap-oob="morph:innerHTML"
         >
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 animate-pulse h-24"></div>
@@ -138,7 +137,7 @@
                 class="text-xs font-mono text-gray-500"
                 hx-get="/api/fragments/processing-count"
                 hx-trigger="load"
-                hx-swap="innerHTML"
+                hx-swap="morph:innerHTML"
                 sse-swap="processing-count"
                 >0 items</span
               >
@@ -148,7 +147,7 @@
               class="flex-1 overflow-y-auto custom-scrollbar p-2"
               hx-get="/api/fragments/processing"
               hx-trigger="load"
-              hx-swap="innerHTML"
+              hx-swap="morph:innerHTML"
               sse-swap="processing"
             >
               <div class="h-full flex flex-col items-center justify-center text-gray-500 space-y-2">
@@ -186,7 +185,7 @@
                 class="text-xs font-mono text-gray-500"
                 hx-get="/api/fragments/blocked-count"
                 hx-trigger="load"
-                hx-swap="innerHTML"
+                hx-swap="morph:innerHTML"
                 sse-swap="blocked-count"
                 >0 items</span
               >
@@ -196,7 +195,7 @@
               class="flex-1 overflow-y-auto custom-scrollbar p-2"
               hx-get="/api/fragments/blocked"
               hx-trigger="load"
-              hx-swap="innerHTML"
+              hx-swap="morph:innerHTML"
               sse-swap="blocked"
             >
               <div class="h-full flex flex-col items-center justify-center text-gray-500 space-y-2">
@@ -235,7 +234,7 @@
               class="text-xs font-mono text-gray-500"
               hx-get="/api/fragments/recent-count"
               hx-trigger="load"
-              hx-swap="innerHTML"
+              hx-swap="morph:innerHTML"
               sse-swap="recent-count"
               >0 items</span
             >
@@ -245,7 +244,7 @@
             class="flex-1 overflow-y-auto custom-scrollbar p-2"
             hx-get="/api/fragments/recent"
             hx-trigger="load"
-            hx-swap="innerHTML"
+            hx-swap="morph:innerHTML"
             sse-swap="recent"
           >
             <div class="h-full flex flex-col items-center justify-center text-gray-500 space-y-2">

@@ -3,15 +3,26 @@
  */
 
 import { confirm } from '@inquirer/prompts';
+import { gt } from 'drizzle-orm';
 import { db, schema } from '../db/index.js';
 
-export async function resetCommand(options: { yes: boolean; signals: boolean }): Promise<void> {
-  const signalsOnly = options.signals;
+export async function resetCommand(options: {
+  yes: boolean;
+  signals: boolean;
+  retries: boolean;
+}): Promise<void> {
+  const { yes, signals: signalsOnly, retries: retriesOnly } = options;
 
-  if (!options.yes) {
-    const message = signalsOnly
-      ? 'This will clear all signals from the database. Continue?'
-      : 'This will reset the sync state, forcing proton-drive-sync to sync all files as if it were first launched. Continue?';
+  if (!yes) {
+    let message: string;
+    if (retriesOnly) {
+      message = 'This will remove all sync jobs that are pending retry. Continue?';
+    } else if (signalsOnly) {
+      message = 'This will clear all signals from the database. Continue?';
+    } else {
+      message =
+        'This will reset the sync state, forcing proton-drive-sync to sync all files as if it were first launched. Continue?';
+    }
 
     const confirmed = await confirm({
       message,
@@ -24,7 +35,10 @@ export async function resetCommand(options: { yes: boolean; signals: boolean }):
     }
   }
 
-  if (signalsOnly) {
+  if (retriesOnly) {
+    const result = db.delete(schema.syncJobs).where(gt(schema.syncJobs.nRetries, 0)).run();
+    console.log(`Removed ${result.changes} job(s) pending retry.`);
+  } else if (signalsOnly) {
     db.delete(schema.signals).run();
     console.log('Signals cleared.');
   } else {

@@ -149,7 +149,7 @@ export async function queryAllChanges(
 
   await Promise.all(
     config.sync_dirs.map(async (dir) => {
-      const watchDir = realpathSync(dir);
+      const watchDir = realpathSync(dir.source_path);
 
       // Register directory with Watchman
       const watchResp = await registerWithWatchman(watchDir);
@@ -159,9 +159,9 @@ export async function queryAllChanges(
       const savedClock = getClock(watchDir);
 
       if (savedClock) {
-        logger.info(`Syncing changes since last run for ${dir}...`);
+        logger.info(`Syncing changes since last run for ${dir.source_path}...`);
       } else {
-        logger.info(`First run - syncing all existing files in ${dir}...`);
+        logger.info(`First run - syncing all existing files in ${dir.source_path}...`);
       }
 
       const query = buildWatchmanQuery(savedClock, relative);
@@ -200,7 +200,7 @@ export async function setupWatchSubscriptions(
   // Set up watches for all configured directories
   await Promise.all(
     config.sync_dirs.map(async (dir) => {
-      const watchDir = realpathSync(dir);
+      const watchDir = realpathSync(dir.source_path);
       const subName = `${SUB_NAME}-${basename(watchDir)}`;
 
       // Register directory with Watchman
@@ -212,16 +212,16 @@ export async function setupWatchSubscriptions(
       const savedClock = getClock(watchDir);
 
       if (savedClock) {
-        logger.info(`Resuming ${dir} from last sync state...`);
+        logger.info(`Resuming ${dir.source_path} from last sync state...`);
       } else {
-        logger.info(`First run - syncing all existing files in ${dir}...`);
+        logger.info(`First run - syncing all existing files in ${dir.source_path}...`);
       }
 
       const sub = buildWatchmanQuery(savedClock, relative);
 
       // Register subscription
       await subscribeWatchman(root, subName, sub);
-      logger.info(`Watching ${dir} for changes...`);
+      logger.info(`Watching ${dir.source_path} for changes...`);
     })
   );
 
@@ -234,14 +234,14 @@ export async function setupWatchSubscriptions(
 
     // Extract the watch root from the subscription name
     const dirName = resp.subscription.replace(`${SUB_NAME}-`, '');
-    const watchRoot = config.sync_dirs.find((d) => basename(realpathSync(d)) === dirName) || '';
+    const syncDir = config.sync_dirs.find((d) => basename(realpathSync(d.source_path)) === dirName);
 
-    if (!watchRoot) {
+    if (!syncDir) {
       logger.error(`Could not find watch root for subscription: ${resp.subscription}`);
       return;
     }
 
-    const resolvedRoot = realpathSync(watchRoot);
+    const resolvedRoot = realpathSync(syncDir.source_path);
 
     for (const file of resp.files) {
       const fileChange = file as unknown as Omit<FileChange, 'watchRoot'>;

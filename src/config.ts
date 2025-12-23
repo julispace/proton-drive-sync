@@ -12,9 +12,13 @@ import { xdgConfig } from 'xdg-basedir';
 // Types
 // ============================================================================
 
-export interface Config {
-  sync_dirs: string[];
+export interface SyncDir {
+  source_path: string;
   remote_root: string;
+}
+
+export interface Config {
+  sync_dirs: SyncDir[];
   sync_concurrency: number;
 }
 
@@ -45,7 +49,9 @@ export function ensureConfigDir(): void {
 export function loadConfig(): Config {
   if (!existsSync(CONFIG_FILE)) {
     console.error(`Config file not found: ${CONFIG_FILE}`);
-    console.error('Create it with: {"sync_dirs": ["/path/to/dir"]}');
+    console.error(
+      'Create it with: {"sync_dirs": [{"source_path": "/path/to/dir", "remote_root": "backup"}]}'
+    );
     process.exit(1);
   }
 
@@ -63,21 +69,33 @@ export function loadConfig(): Config {
       process.exit(1);
     }
 
-    // Default remote_root to empty string if not set
-    if (config.remote_root === undefined) {
-      config.remote_root = '';
-    }
-
     // Default sync_concurrency to 8 if not set
     if (config.sync_concurrency === undefined) {
       config.sync_concurrency = 8;
     }
 
-    // Validate all directories exist
+    // Validate all sync_dirs entries
     for (const dir of config.sync_dirs) {
-      if (!existsSync(dir)) {
-        console.error(`Sync directory does not exist: ${dir}`);
+      if (typeof dir === 'string') {
+        console.error(
+          'Config sync_dirs must be objects with "source_path" and "remote_root" properties'
+        );
+        console.error(
+          'Example: {"sync_dirs": [{"source_path": "/path/to/dir", "remote_root": "backup"}]}'
+        );
         process.exit(1);
+      }
+      if (!dir.source_path) {
+        console.error('Each sync_dirs entry must have a "source_path" property');
+        process.exit(1);
+      }
+      if (!existsSync(dir.source_path)) {
+        console.error(`Sync directory does not exist: ${dir.source_path}`);
+        process.exit(1);
+      }
+      // Default remote_root to empty string if not set
+      if (dir.remote_root === undefined) {
+        dir.remote_root = '';
       }
     }
 

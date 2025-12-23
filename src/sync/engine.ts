@@ -49,10 +49,14 @@ export interface SyncOptions {
 function handleFileChange(file: FileChange, config: Config, dryRun: boolean): void {
   const localPath = join(file.watchRoot, file.name);
 
+  // Find the sync dir config for this watch root
+  const syncDir = config.sync_dirs.find((d) => file.watchRoot.startsWith(d.source_path));
+  const remoteRoot = syncDir?.remote_root || '';
+
   // Build remote path: remote_root/dirName/file.name
   const dirName = basename(file.watchRoot);
-  const remotePath = config.remote_root
-    ? `${config.remote_root}/${dirName}/${file.name}`
+  const remotePath = remoteRoot
+    ? `${remoteRoot}/${dirName}/${file.name}`
     : `${dirName}/${file.name}`;
 
   // Determine event type
