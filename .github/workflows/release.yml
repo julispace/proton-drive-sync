@@ -13,9 +13,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             target: darwin-arm64
-          - os: macos-13
+          - os: macos-15
             target: darwin-x64
 
     runs-on: ${{ matrix.os }}
@@ -28,6 +28,9 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
+
+      - name: Install Watchman
+        run: brew install watchman
 
       - name: Install dependencies
         run: bun install
