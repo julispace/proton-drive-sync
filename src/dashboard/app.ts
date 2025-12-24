@@ -1026,7 +1026,7 @@ app.get('/', async (c) => {
 // Serve controls page
 app.get('/controls', async (c) => {
   const layout = await getLayout();
-  let content = await readFile(join(__dirname, 'config.html'), 'utf-8');
+  let content = await readFile(join(__dirname, 'controls.html'), 'utf-8');
   const isOnboarding = !hasFlag(FLAGS.ONBOARDED);
 
   // Replace button text/icons based on onboarding state
