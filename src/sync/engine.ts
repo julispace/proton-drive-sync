@@ -9,7 +9,7 @@ import { SyncEventType } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { registerSignalHandler } from '../signals.js';
 import { setFlag, clearFlag, isPaused, FLAGS } from '../flags.js';
-import { stopDashboard } from '../dashboard/server.js';
+import { stopDashboard, sendSyncHeartbeat } from '../dashboard/server.js';
 import { getConfig, onConfigChange } from '../config.js';
 import type { Config } from '../config.js';
 import type { ProtonDriveClient } from '../proton/types.js';
@@ -212,6 +212,9 @@ function startJobProcessorLoop(client: ProtonDriveClient, dryRun: boolean): Proc
 
   const processLoop = async (): Promise<void> => {
     if (!running) return;
+
+    // Send heartbeat to dashboard to indicate sync loop is alive
+    sendSyncHeartbeat();
 
     if (paused) {
       // When paused, just reschedule without processing

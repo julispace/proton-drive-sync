@@ -236,20 +236,15 @@
             sse-swap="auth"
           ></div>
 
-          <!-- Connection Status: last to collapse (below 500px) -->
+          <!-- Syncing Status: last to collapse (below 500px) -->
           <div
-            id="connection-status"
-            class="connected-badge h-9 items-center gap-1.5 sm:gap-2 px-2 sm:px-3 rounded-full bg-gray-900 border border-green-500/30 bg-green-500/10"
-          >
-            <div class="relative flex h-2.5 w-2.5">
-              <span
-                id="heartbeat-ping"
-                class="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-0"
-              ></span>
-              <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-            </div>
-            <span class="text-xs font-medium text-green-400">Connected</span>
-          </div>
+            id="syncing-status"
+            class="connected-badge"
+            hx-get="/api/fragments/syncing-status"
+            hx-trigger="load"
+            hx-swap="morph:innerHTML"
+            sse-swap="syncing"
+          ></div>
         </div>
       </div>
     </header>
@@ -257,52 +252,8 @@
     <main class="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 lg:p-8">{{CONTENT}}</main>
 
     <script>
-      // Handle SSE connection status
-      let heartbeatTimeout = null;
-      const HEARTBEAT_TIMEOUT_MS = 10000;
-
-      function showDisconnected() {
-        document.getElementById('connection-status').innerHTML = `
-          <div class="relative flex h-2.5 w-2.5">
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
-          </div>
-          <span class="text-xs font-medium text-red-400">Disconnected</span>
-        `;
-        document.getElementById('connection-status').className =
-          'connected-badge h-9 items-center gap-2 px-3 rounded-full bg-gray-900 border border-red-500/30 bg-red-500/10';
-
-        // Stop activity indicators
-        document.querySelectorAll('.animate-pulse').forEach((el) => {
-          el.classList.remove('animate-pulse');
-          el.classList.add('opacity-50');
-        });
-        document.querySelectorAll('.animate-spin').forEach((el) => {
-          el.classList.remove('animate-spin');
-          el.classList.add('opacity-50');
-        });
-      }
-
-      function resetHeartbeatTimeout() {
-        if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
-        heartbeatTimeout = setTimeout(showDisconnected, HEARTBEAT_TIMEOUT_MS);
-      }
-
-      document.body.addEventListener('htmx:sseOpen', () => {
-        document.getElementById('connection-status').innerHTML = `
-          <div class="relative flex h-2.5 w-2.5">
-            <span id="heartbeat-ping" class="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-0"></span>
-            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-          </div>
-          <span class="text-xs font-medium text-green-400">Connected</span>
-        `;
-        document.getElementById('connection-status').className =
-          'connected-badge h-9 items-center gap-2 px-3 rounded-full bg-gray-900 border border-green-500/30 bg-green-500/10';
-        resetHeartbeatTimeout();
-      });
-
       // Pulse the heartbeat dot on each heartbeat event
       document.body.addEventListener('heartbeat-received', () => {
-        resetHeartbeatTimeout();
         const ping = document.getElementById('heartbeat-ping');
         if (ping) {
           ping.classList.remove('opacity-0');
@@ -312,11 +263,6 @@
             ping.classList.add('opacity-0');
           }, 500);
         }
-      });
-
-      document.body.addEventListener('htmx:sseError', () => {
-        if (heartbeatTimeout) clearTimeout(heartbeatTimeout);
-        showDisconnected();
       });
 
       // Initialize Lucide icons

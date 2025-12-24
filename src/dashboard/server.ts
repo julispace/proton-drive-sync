@@ -39,6 +39,7 @@ export interface AuthStatusUpdate {
 export interface DashboardStatus {
   auth: AuthStatusUpdate;
   isPaused: boolean;
+  isSyncing: boolean;
 }
 
 // ============================================================================
@@ -168,6 +169,11 @@ let currentConfig: Config | null = null;
 let currentDryRun = false;
 let currentAuthStatus: AuthStatusUpdate = { status: 'unauthenticated' };
 let lastSentStatus: DashboardStatus | null = null;
+let isSyncing = false;
+let lastSyncHeartbeat: number = 0;
+
+// How long to wait before considering sync loop dead (3x JOB_POLL_INTERVAL_MS of 10s)
+const SYNC_HEARTBEAT_TIMEOUT_MS = 30_000;
 
 // Heartbeat interval (1.5 seconds) - checks for status changes
 const HEARTBEAT_INTERVAL_MS = 1500;
@@ -381,6 +387,15 @@ export function sendAuthStatus(update: AuthStatusUpdate): void {
 }
 
 /**
+ * Signal that the sync process loop is alive.
+ * Called periodically from engine.ts processLoop.
+ */
+export function sendSyncHeartbeat(): void {
+  isSyncing = true;
+  lastSyncHeartbeat = Date.now();
+}
+
+/**
  * Send current status (auth + isPaused) to the dashboard subprocess.
  * Always sends a heartbeat, but only includes status data if changed.
  * Called on heartbeat interval and when auth status changes.
@@ -389,9 +404,13 @@ export function sendAuthStatus(update: AuthStatusUpdate): void {
 function sendStatusToDashboard(force = false): void {
   if (!dashboardProcess?.connected) return;
 
+  // Check if sync heartbeat is stale
+  const syncActive = Date.now() - lastSyncHeartbeat < SYNC_HEARTBEAT_TIMEOUT_MS;
+
   const status: DashboardStatus = {
     auth: currentAuthStatus,
     isPaused: isPaused(),
+    isSyncing: isSyncing && syncActive,
   };
 
   // Helper to safely get username from auth status
@@ -403,6 +422,7 @@ function sendStatusToDashboard(force = false): void {
     force ||
     !lastSentStatus ||
     lastSentStatus.isPaused !== status.isPaused ||
+    lastSentStatus.isSyncing !== status.isSyncing ||
     lastSentStatus.auth.status !== status.auth.status ||
     getUsername(lastSentStatus.auth) !== getUsername(status.auth);
 

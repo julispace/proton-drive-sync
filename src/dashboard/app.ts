@@ -61,6 +61,7 @@ const heartbeatEvents = new EventEmitter();
 // Current status (for API endpoint)
 let currentAuthStatus: AuthStatusUpdate = { status: 'unauthenticated' };
 let currentIsPaused = false;
+let currentIsSyncing = false;
 let currentConfig: Config | null = null;
 
 // Listen for diff events from parent process via IPC
@@ -73,6 +74,7 @@ process.on(
     config?: Config;
     auth?: AuthStatusUpdate;
     isPaused?: boolean;
+    isSyncing?: boolean;
   }) => {
     if (msg.type === 'job_state_diff' && msg.diff) {
       stateDiffEvents.emit('job_state_diff', msg.diff);
@@ -86,7 +88,14 @@ process.on(
       if (msg.isPaused !== undefined) {
         currentIsPaused = msg.isPaused;
       }
-      statusEvents.emit('status', { auth: currentAuthStatus, isPaused: currentIsPaused });
+      if (msg.isSyncing !== undefined) {
+        currentIsSyncing = msg.isSyncing;
+      }
+      statusEvents.emit('status', {
+        auth: currentAuthStatus,
+        isPaused: currentIsPaused,
+        isSyncing: currentIsSyncing,
+      });
     } else if (msg.type === 'heartbeat') {
       heartbeatEvents.emit('heartbeat');
     }
@@ -388,6 +397,28 @@ function renderPausedBadge(isPaused: boolean): string {
 </div>`;
 }
 
+/** Render syncing status badge HTML */
+function renderSyncingBadge(isSyncing: boolean): string {
+  if (isSyncing) {
+    return `
+<div class="h-9 flex items-center gap-2 px-3 rounded-full bg-gray-900 border border-green-500/30 bg-green-500/10">
+  <div class="relative flex h-2.5 w-2.5">
+    <span id="heartbeat-ping" class="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-0"></span>
+    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+  </div>
+  <span class="text-xs font-medium text-green-400">Connected</span>
+</div>`;
+  }
+  return `
+<div class="h-9 flex items-center gap-2 px-3 rounded-full bg-gray-900 border border-amber-500/30 bg-amber-500/10">
+  <div class="relative flex h-2.5 w-2.5">
+    <span id="heartbeat-ping" class="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-0"></span>
+    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+  </div>
+  <span class="text-xs font-medium text-amber-400">Not Syncing</span>
+</div>`;
+}
+
 /** Render pause/resume button */
 function renderPauseButton(isPaused: boolean): string {
   if (isPaused) {
@@ -434,16 +465,16 @@ function renderDryRunBanner(dryRun: boolean): string {
 </div>`;
 }
 
-/** Render processing box title based on pause state and auth status */
+/** Render processing box title based on pause state, auth status, and syncing status */
 function renderProcessingTitle(isPaused: boolean): string {
-  if (currentAuthStatus.status !== 'authenticated') {
+  if (currentAuthStatus.status !== 'authenticated' || !currentIsSyncing) {
     return `
 <span class="w-2 h-2 rounded-full bg-amber-500"></span>
 Held Transfers
 <div class="relative group">
   <i data-lucide="info" class="w-4 h-4 text-gray-500 cursor-help"></i>
   <div class="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-xs text-gray-300 w-80 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 normal-case font-normal">
-    Transfers are held until you authenticate
+    Transfers are held until you authenticate and syncing starts
   </div>
 </div>`;
   }
@@ -1008,6 +1039,10 @@ app.get('/api/fragments/retry-all-button', (c) => {
   return c.html(renderRetryAllButton(getRetryJobs(1).length > 0));
 });
 
+app.get('/api/fragments/syncing-status', (c) => {
+  return c.html(renderSyncingBadge(currentIsSyncing));
+});
+
 /** Set onboarded flag */
 app.post('/api/onboard', (c) => {
   setFlag(FLAGS.ONBOARDED);
@@ -1024,7 +1059,11 @@ app.post('/api/toggle-pause', (c) => {
     currentIsPaused = true;
   }
   // Emit status event so all SSE clients get updated
-  statusEvents.emit('status', { auth: currentAuthStatus, isPaused: currentIsPaused });
+  statusEvents.emit('status', {
+    auth: currentAuthStatus,
+    isPaused: currentIsPaused,
+    isSyncing: currentIsSyncing,
+  });
   return c.html(renderPauseButton(currentIsPaused));
 });
 
@@ -1133,9 +1172,10 @@ app.get('/api/events', async (c) => {
     };
 
     const statusHandler = (status: DashboardStatus) => {
-      // Forward full status: auth, paused badge, pause button, processing title, and heartbeat
+      // Forward full status: auth, paused badge, syncing badge, pause button, processing title, and heartbeat
       stream.writeSSE({ event: 'auth', data: renderAuthStatus(status.auth) });
       stream.writeSSE({ event: 'paused', data: renderPausedBadge(status.isPaused) });
+      stream.writeSSE({ event: 'syncing', data: renderSyncingBadge(status.isSyncing) });
       stream.writeSSE({ event: 'pause-button', data: renderPauseButton(status.isPaused) });
       stream.writeSSE({ event: 'processing-title', data: renderProcessingTitle(status.isPaused) });
       // Re-render processing list to update icons based on pause state
@@ -1164,6 +1204,7 @@ app.get('/api/events', async (c) => {
     await stream.writeSSE({ event: 'stats', data: renderStats(counts) });
     await stream.writeSSE({ event: 'auth', data: renderAuthStatus(currentAuthStatus) });
     await stream.writeSSE({ event: 'paused', data: renderPausedBadge(currentIsPaused) });
+    await stream.writeSSE({ event: 'syncing', data: renderSyncingBadge(currentIsSyncing) });
     await stream.writeSSE({ event: 'pause-button', data: renderPauseButton(currentIsPaused) });
     await stream.writeSSE({
       event: 'processing-title',
