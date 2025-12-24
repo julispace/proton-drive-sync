@@ -28,7 +28,7 @@ import {
 } from '../sync/queue.js';
 import { FLAGS, setFlag, clearFlag, hasFlag } from '../flags.js';
 import { sendSignal } from '../signals.js';
-import { logger } from '../logger.js';
+import { logger, disableConsoleLogging } from '../logger.js';
 import { CONFIG_FILE, CONFIG_CHECK_SIGNAL } from '../config.js';
 import {
   isServiceInstalled,
@@ -76,6 +76,11 @@ let currentAuthStatus: AuthStatusUpdate = { status: 'unauthenticated' };
 let currentSyncStatus: SyncStatus = 'disconnected';
 let currentConfig: Config | null = null;
 let loggedAuthUser: string | null = null; // Track logged auth to avoid duplicate logs
+
+// Disable console logging when not connected to a TTY (running as background service)
+if (!process.stdout.isTTY) {
+  disableConsoleLogging();
+}
 
 // Listen for diff events from parent process via IPC
 process.on(

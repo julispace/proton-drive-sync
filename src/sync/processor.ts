@@ -50,7 +50,7 @@ async function deleteNodeOrThrow(
   dryRun: boolean
 ): Promise<{ existed: boolean }> {
   if (dryRun) return { existed: false };
-  const result = await deleteNode(client, remotePath, false);
+  const result = await deleteNode(client, remotePath);
   if (!result.success) {
     throw new Error(result.error);
   }
@@ -79,6 +79,7 @@ async function deleteAndRecreateNode(
   remotePath: string,
   dryRun: boolean
 ): Promise<string> {
+  logger.info(`Deleting node for recreate: ${remotePath}`);
   await deleteNodeOrThrow(client, remotePath, dryRun);
   logger.info(`Deleted node ${remotePath}, now recreating`);
   const nodeUid = await createNodeOrThrow(client, localPath, remotePath, dryRun);

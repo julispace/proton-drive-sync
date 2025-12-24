@@ -90,6 +90,7 @@ async function uploadFile(
     mediaType: 'application/octet-stream',
     expectedSize: fileSize,
     modificationTime: fileStat.mtime,
+    overrideExistingDraftByOtherClient: true,
   };
 
   let uploadController: UploadController;

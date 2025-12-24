@@ -30,8 +30,7 @@ export type { DeleteProtonDriveClient, DeleteOperationResult } from './types.js'
  */
 export async function deleteNode(
   client: DeleteProtonDriveClient,
-  remotePath: string,
-  permanent: boolean = false
+  remotePath: string
 ): Promise<DeleteOperationResult> {
   const { parentParts, name } = parsePath(remotePath);
 
@@ -68,19 +67,11 @@ export async function deleteNode(
     return { success: true, existed: false };
   }
 
-  // Delete or trash the node
+  // Delete the node
   try {
-    if (permanent) {
-      for await (const result of client.deleteNodes([targetNode.uid])) {
-        if (!result.ok) {
-          throw new Error(`Failed to delete: ${result.error}`);
-        }
-      }
-    } else {
-      for await (const result of client.trashNodes([targetNode.uid])) {
-        if (!result.ok) {
-          throw new Error(`Failed to trash: ${result.error}`);
-        }
+    for await (const result of client.deleteNodes([targetNode.uid])) {
+      if (!result.ok) {
+        throw new Error(`Failed to delete: ${result.error}`);
       }
     }
 
