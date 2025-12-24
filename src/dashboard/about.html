@@ -27,39 +27,45 @@
     </p>
 
     <!-- Badges -->
-    <div class="flex items-center gap-3 mb-4 flex-wrap justify-center">
+    <div class="grid grid-cols-3 items-center gap-3 mb-4">
       <!-- X (Twitter) Badge -->
-      <a
-        href="https://x.com/TheBitFlipper"
-        target="_blank"
-        class="h-9 flex items-center gap-2 px-3 bg-gray-900 border border-gray-600 rounded-full hover:border-gray-500 transition-colors"
-      >
-        <img src="/assets/x-logo.svg" alt="X" class="w-4 h-4" />
-        <span class="text-gray-300 text-sm font-medium">Follow</span>
-      </a>
-      <!-- GitHub Stars Badge -->
-      <a
-        href="https://github.com/DamianB-BitFlipper/proton-drive-sync"
-        target="_blank"
-        class="github-badge h-9 flex items-center gap-2 px-3 bg-gray-900 border border-gray-600 rounded-full hover:border-gray-500 transition-colors"
-      >
-        <img src="/assets/github.svg" alt="GitHub" class="w-4 h-4" />
-        <span class="text-gray-300 text-sm font-medium">GitHub</span>
-        <i data-lucide="star" class="w-4 h-4 text-white transition-colors fill-current"></i>
-        <img
-          src="https://img.shields.io/github/stars/DamianB-BitFlipper/proton-drive-sync?style=flat&label=&color=1f2937"
-          alt="Stars"
-          class="h-5"
-        />
-      </a>
+      <div class="flex justify-end">
+        <a
+          href="https://x.com/TheBitFlipper"
+          target="_blank"
+          class="h-9 flex items-center gap-2 px-3 bg-gray-900 border border-gray-600 rounded-full hover:border-gray-500 transition-colors"
+        >
+          <img src="/assets/x-logo.svg" alt="X" class="w-4 h-4" />
+          <span class="text-gray-300 text-sm font-medium">Follow</span>
+        </a>
+      </div>
+      <!-- GitHub Stars Badge (centered) -->
+      <div class="flex justify-center">
+        <a
+          href="https://github.com/DamianB-BitFlipper/proton-drive-sync"
+          target="_blank"
+          class="github-badge h-9 flex items-center gap-2 px-3 bg-gray-900 border border-gray-600 rounded-full hover:border-gray-500 transition-colors"
+        >
+          <img src="/assets/github.svg" alt="GitHub" class="w-4 h-4" />
+          <span class="text-gray-300 text-sm font-medium">GitHub</span>
+          <i data-lucide="star" class="w-4 h-4 text-white transition-colors fill-current"></i>
+          <img
+            src="https://img.shields.io/github/stars/DamianB-BitFlipper/proton-drive-sync?style=flat&label=&color=1f2937"
+            alt="Stars"
+            class="h-5"
+          />
+        </a>
+      </div>
       <!-- Buy Me a Coffee -->
-      <a href="https://www.buymeacoffee.com/thebitflipper" target="_blank">
-        <img
-          src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
-          alt="Buy Me A Coffee"
-          class="h-9 w-auto"
-        />
-      </a>
+      <div class="flex justify-start">
+        <a href="https://www.buymeacoffee.com/thebitflipper" target="_blank">
+          <img
+            src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
+            alt="Buy Me A Coffee"
+            class="h-9 w-auto"
+          />
+        </a>
+      </div>
     </div>
 
     <!-- Start Using Link (only shown during onboarding) -->
