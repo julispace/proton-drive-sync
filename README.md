@@ -13,7 +13,7 @@ Automatically syncs selected local folders to Proton Drive in the background, wi
 Installs `proton-drive-sync` and walks you through authentication and setup:
 
 ```bash
-curl -fsSL https://www.damianb.dev/proton-drive-sync/install.sh | bash
+bash <(curl -fsSL https://www.damianb.dev/proton-drive-sync/install.sh)
 ```
 
 ### Requirements
@@ -38,7 +38,7 @@ The dashboard runs locally at http://localhost:4242. Use it to configure and man
 ### Uninstall
 
 ```bash
-curl -fsSL https://www.damianb.dev/proton-drive-sync/uninstall.sh | bash
+bash <(curl -fsSL https://www.damianb.dev/proton-drive-sync/uninstall.sh)
 ```
 
 ## Development

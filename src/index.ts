@@ -19,7 +19,9 @@ import { stopCommand } from './cli/stop.js';
 import { startCommand } from './cli/start.js';
 import { dashboardCommand } from './cli/dashboard.js';
 
-program.name('proton-drive-sync').description('Sync local files to Proton Drive').version('1.0.0');
+const { version } = (await import('../package.json')).default;
+
+program.name('proton-drive-sync').description('Sync local files to Proton Drive').version(version);
 
 program
   .command('auth')
