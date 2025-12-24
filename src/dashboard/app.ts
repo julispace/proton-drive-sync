@@ -846,7 +846,7 @@ async function composePage(
   contentHtml: string,
   options: {
     title: string;
-    activeTab: 'home' | 'settings' | 'about';
+    activeTab: 'home' | 'controls' | 'about';
     pageScripts: string;
     isOnboarded?: boolean;
   }
@@ -856,8 +856,8 @@ async function composePage(
     options.activeTab === 'home'
       ? 'text-white border-b-2 border-white'
       : 'text-gray-400 hover:text-white';
-  const settingsTabClass =
-    options.activeTab === 'settings'
+  const controlsTabClass =
+    options.activeTab === 'controls'
       ? 'text-white border-b-2 border-white'
       : 'text-gray-400 hover:text-white';
   const aboutTabClass =
@@ -868,7 +868,7 @@ async function composePage(
   return layoutHtml
     .replace('{{TITLE}}', options.title)
     .replace('{{HOME_TAB_CLASS}}', homeTabClass)
-    .replace('{{SETTINGS_TAB_CLASS}}', settingsTabClass)
+    .replace('{{CONTROLS_TAB_CLASS}}', controlsTabClass)
     .replace('{{ABOUT_TAB_CLASS}}', aboutTabClass)
     .replace('{{HIDE_HOME_TAB}}', isOnboarded ? '' : 'hidden')
     .replace('{{HIDE_BADGES}}', options.activeTab === 'about' ? 'hidden' : '')
@@ -888,9 +888,9 @@ async function getLayout(): Promise<string> {
 
 // Serve dashboard HTML at root
 app.get('/', async (c) => {
-  // Redirect to settings if not onboarded
+  // Redirect to controls if not onboarded
   if (!hasFlag(FLAGS.ONBOARDED)) {
-    return c.redirect('/settings');
+    return c.redirect('/controls');
   }
   const layout = await getLayout();
   const content = await readFile(join(__dirname, 'home.html'), 'utf-8');
@@ -902,8 +902,8 @@ app.get('/', async (c) => {
   return c.html(html);
 });
 
-// Serve settings page
-app.get('/settings', async (c) => {
+// Serve controls page
+app.get('/controls', async (c) => {
   const layout = await getLayout();
   let content = await readFile(join(__dirname, 'config.html'), 'utf-8');
   const isOnboarding = !hasFlag(FLAGS.ONBOARDED);
@@ -919,8 +919,8 @@ app.get('/settings', async (c) => {
   const scriptsWithRedirect = SETTINGS_PAGE_SCRIPTS.replace('{{REDIRECT_AFTER_SAVE}}', redirectUrl);
 
   const html = await composePage(layout, content, {
-    title: 'Settings - Proton Drive Sync',
-    activeTab: 'settings',
+    title: 'Controls - Proton Drive Sync',
+    activeTab: 'controls',
     pageScripts: scriptsWithRedirect,
     isOnboarded: !isOnboarding,
   });
