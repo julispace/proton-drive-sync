@@ -252,6 +252,32 @@
     <main class="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 lg:p-8">{{CONTENT}}</main>
 
     <script>
+      // Store SSE EventSource reference for cleanup
+      let sseSource = null;
+
+      // Capture the EventSource when connection opens
+      document.body.addEventListener('htmx:sseOpen', (e) => {
+        sseSource = e.detail.source;
+      });
+
+      // Close SSE before navigating to prevent connection pile-up
+      document.querySelectorAll('a[href^="/"]').forEach((link) => {
+        link.addEventListener('click', () => {
+          if (sseSource) {
+            sseSource.close();
+            sseSource = null;
+          }
+        });
+      });
+
+      // Also close on page unload (e.g., refresh, external navigation)
+      window.addEventListener('beforeunload', () => {
+        if (sseSource) {
+          sseSource.close();
+          sseSource = null;
+        }
+      });
+
       // Pulse the heartbeat dot on each heartbeat event
       document.body.addEventListener('heartbeat-received', () => {
         const ping = document.getElementById('heartbeat-ping');
