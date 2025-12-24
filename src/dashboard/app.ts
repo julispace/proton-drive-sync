@@ -66,6 +66,61 @@ const embeddedAssets: Record<string, { content: string; type: string }> = {
 };
 
 // ============================================================================
+// Fragment Registry - Single source of truth for all fragment keys
+// ============================================================================
+
+export const FRAG = {
+  stats: 'stats',
+  processingQueue: 'processing-queue',
+  blockedQueue: 'blocked-queue',
+  pendingQueue: 'pending-queue',
+  recentQueue: 'recent-queue',
+  retryQueue: 'retry-queue',
+  auth: 'auth',
+  paused: 'paused',
+  syncing: 'syncing',
+  processingTitle: 'processing-title',
+  stopSection: 'stop-section',
+  pauseButton: 'pause-button',
+  dryRunBanner: 'dry-run-banner',
+  configInfo: 'config-info',
+} as const;
+
+export type FragmentKey = (typeof FRAG)[keyof typeof FRAG];
+
+// ============================================================================
+// Dashboard Snapshot - Capture all state once per update
+// ============================================================================
+
+export type DashboardSnapshot = {
+  counts: ReturnType<typeof getJobCounts>;
+  processing: DashboardJob[];
+  blocked: DashboardJob[];
+  pending: DashboardJob[];
+  recent: DashboardJob[];
+  retry: DashboardJob[];
+  auth: AuthStatusUpdate;
+  syncStatus: SyncStatus;
+  dryRun: boolean;
+  config: Config | null;
+};
+
+export function snapshot(limit = 50): DashboardSnapshot {
+  return {
+    counts: getJobCounts(),
+    processing: getProcessingJobs(),
+    blocked: getBlockedJobs(limit),
+    pending: getPendingJobs(limit),
+    recent: getRecentJobs(limit),
+    retry: getRetryJobs(limit),
+    auth: currentAuthStatus,
+    syncStatus: currentSyncStatus,
+    dryRun: isDryRun,
+    config: currentConfig,
+  };
+}
+
+// ============================================================================
 // Constants
 // ============================================================================
 
@@ -675,6 +730,46 @@ function renderConfigInfo(config: Config | null): string {
 }
 
 // ============================================================================
+// Unified Fragment Renderer
+// ============================================================================
+
+/** Single fragment renderer - renders any fragment by key using snapshot state */
+export function renderFragment(key: FragmentKey, s: DashboardSnapshot): string {
+  switch (key) {
+    case FRAG.stats:
+      return renderStats(s.counts);
+    case FRAG.processingQueue:
+      return renderProcessingQueue(s.processing);
+    case FRAG.blockedQueue:
+      return renderBlockedQueue(s.blocked);
+    case FRAG.pendingQueue:
+      return renderPendingQueue(s.pending);
+    case FRAG.recentQueue:
+      return renderRecentQueue(s.recent);
+    case FRAG.retryQueue:
+      return renderRetryQueue(s.retry);
+    case FRAG.auth:
+      return renderAuthStatus(s.auth);
+    case FRAG.paused:
+      return renderPausedBadge(s.syncStatus === 'paused');
+    case FRAG.syncing:
+      return renderSyncingBadge(s.syncStatus);
+    case FRAG.processingTitle:
+      return renderProcessingTitle(s.syncStatus === 'paused');
+    case FRAG.stopSection:
+      return renderStopSection(s.syncStatus);
+    case FRAG.pauseButton:
+      return renderPauseButton(s.syncStatus);
+    case FRAG.dryRunBanner:
+      return renderDryRunBanner(s.dryRun);
+    case FRAG.configInfo:
+      return renderConfigInfo(s.config);
+    default:
+      return '';
+  }
+}
+
+// ============================================================================
 // Hono App
 // ============================================================================
 
@@ -1152,55 +1247,12 @@ app.get('/favicon.ico', (c) => {
 // HTML Fragment Endpoints
 // ============================================================================
 
-app.get('/api/fragments/stats', (c) => {
-  return c.html(renderStats(getJobCounts()));
-});
-
-app.get('/api/fragments/stop-section', (c) => {
-  return c.html(renderStopSection(currentSyncStatus));
-});
-
-app.get('/api/fragments/processing-queue', (c) => {
-  return c.html(renderProcessingQueue(getProcessingJobs()));
-});
-
-app.get('/api/fragments/blocked-queue', (c) => {
-  return c.html(renderBlockedQueue(getBlockedJobs()));
-});
-
-app.get('/api/fragments/recent-queue', (c) => {
+// One generic endpoint serves all fragments (e.g., hx-get="/api/fragments/stats")
+app.get('/api/fragments/:key', (c) => {
+  const key = c.req.param('key') as FragmentKey;
   const limit = parseInt(c.req.query('limit') || '50', 10);
-  return c.html(renderRecentQueue(getRecentJobs(limit)));
-});
-
-app.get('/api/fragments/pending-queue', (c) => {
-  const limit = parseInt(c.req.query('limit') || '50', 10);
-  return c.html(renderPendingQueue(getPendingJobs(limit)));
-});
-
-app.get('/api/fragments/retry-queue', (c) => {
-  const limit = parseInt(c.req.query('limit') || '50', 10);
-  return c.html(renderRetryQueue(getRetryJobs(limit)));
-});
-
-app.get('/api/fragments/auth-status', (c) => {
-  return c.html(renderAuthStatus(currentAuthStatus));
-});
-
-app.get('/api/fragments/dry-run-banner', (c) => {
-  return c.html(renderDryRunBanner(isDryRun));
-});
-
-app.get('/api/fragments/config-info', (c) => {
-  return c.html(renderConfigInfo(currentConfig));
-});
-
-app.get('/api/fragments/pause-button', (c) => {
-  return c.html(renderPauseButton(currentSyncStatus));
-});
-
-app.get('/api/fragments/syncing-status', (c) => {
-  return c.html(renderSyncingBadge(currentSyncStatus));
+  const s = snapshot(limit);
+  return c.html(renderFragment(key, s));
 });
 
 /** Set onboarded flag */
@@ -1356,14 +1408,13 @@ app.get('/api/events', async (c) => {
     let lastSyncStatus: SyncStatus = currentSyncStatus;
 
     const stateDiffHandler = (_diff: DashboardDiff) => {
-      // On any state change, send updated HTML fragments
-      const counts = getJobCounts();
-      const processingJobs = getProcessingJobs();
+      // Snapshot state once per update
+      const s = snapshot();
 
-      stream.writeSSE({ event: 'stats', data: renderStats(counts) });
+      stream.writeSSE({ event: FRAG.stats, data: renderFragment(FRAG.stats, s) });
 
       // Only send processing-queue if the jobs actually changed
-      const currentJobIds = processingJobs.map((j) => j.id).sort((a, b) => a - b);
+      const currentJobIds = s.processing.map((j) => j.id).sort((a, b) => a - b);
       const jobsChanged =
         currentJobIds.length !== lastProcessingJobIds.length ||
         currentJobIds.some((id, i) => id !== lastProcessingJobIds[i]);
@@ -1371,34 +1422,42 @@ app.get('/api/events', async (c) => {
       if (jobsChanged) {
         lastProcessingJobIds = currentJobIds;
         stream.writeSSE({
-          event: 'processing-queue',
-          data: renderProcessingQueue(processingJobs),
+          event: FRAG.processingQueue,
+          data: renderFragment(FRAG.processingQueue, s),
         });
       }
 
-      stream.writeSSE({ event: 'blocked-queue', data: renderBlockedQueue(getBlockedJobs()) });
-      stream.writeSSE({ event: 'pending-queue', data: renderPendingQueue(getPendingJobs(50)) });
-      stream.writeSSE({ event: 'recent-queue', data: renderRecentQueue(getRecentJobs(50)) });
-      stream.writeSSE({ event: 'retry-queue', data: renderRetryQueue(getRetryJobs(50)) });
+      stream.writeSSE({ event: FRAG.blockedQueue, data: renderFragment(FRAG.blockedQueue, s) });
+      stream.writeSSE({ event: FRAG.pendingQueue, data: renderFragment(FRAG.pendingQueue, s) });
+      stream.writeSSE({ event: FRAG.recentQueue, data: renderFragment(FRAG.recentQueue, s) });
+      stream.writeSSE({ event: FRAG.retryQueue, data: renderFragment(FRAG.retryQueue, s) });
     };
 
     const statusHandler = (status: DashboardStatus) => {
-      const isPaused = status.syncStatus === 'paused';
-      // Forward full status: auth, paused badge, syncing badge, processing title
-      stream.writeSSE({ event: 'auth', data: renderAuthStatus(status.auth) });
-      stream.writeSSE({ event: 'paused', data: renderPausedBadge(isPaused) });
-      stream.writeSSE({ event: 'syncing', data: renderSyncingBadge(status.syncStatus) });
-      stream.writeSSE({ event: 'processing-title', data: renderProcessingTitle(isPaused) });
-      stream.writeSSE({ event: 'stop-section', data: renderStopSection(status.syncStatus) });
+      // Build snapshot with current status
+      const s: DashboardSnapshot = {
+        ...snapshot(),
+        auth: status.auth,
+        syncStatus: status.syncStatus,
+      };
+
+      stream.writeSSE({ event: FRAG.auth, data: renderFragment(FRAG.auth, s) });
+      stream.writeSSE({ event: FRAG.paused, data: renderFragment(FRAG.paused, s) });
+      stream.writeSSE({ event: FRAG.syncing, data: renderFragment(FRAG.syncing, s) });
+      stream.writeSSE({
+        event: FRAG.processingTitle,
+        data: renderFragment(FRAG.processingTitle, s),
+      });
+      stream.writeSSE({ event: FRAG.stopSection, data: renderFragment(FRAG.stopSection, s) });
 
       // Only re-render processing-queue if sync status changed (affects pause button)
       if (status.syncStatus !== lastSyncStatus) {
         lastSyncStatus = status.syncStatus;
         stream.writeSSE({
-          event: 'processing-queue',
-          data: renderProcessingQueue(getProcessingJobs()),
+          event: FRAG.processingQueue,
+          data: renderFragment(FRAG.processingQueue, s),
         });
-        stream.writeSSE({ event: 'pending-queue', data: renderPendingQueue(getPendingJobs(50)) });
+        stream.writeSSE({ event: FRAG.pendingQueue, data: renderFragment(FRAG.pendingQueue, s) });
       }
 
       stream.writeSSE({ event: 'heartbeat', data: '' });
@@ -1412,33 +1471,27 @@ app.get('/api/events', async (c) => {
     statusEvents.on('status', statusHandler);
     heartbeatEvents.on('heartbeat', heartbeatHandler);
 
-    // Send full initial state on connection
-    const counts = getJobCounts();
-    const processingJobs = getProcessingJobs();
-    const blockedJobs = getBlockedJobs(50);
-    const pendingJobs = getPendingJobs(50);
-    const recentJobs = getRecentJobs(50);
-    const retryJobs = getRetryJobs(50);
-    const isPaused = currentSyncStatus === 'paused';
+    // Send full initial state on connection using snapshot
+    const s = snapshot();
 
-    await stream.writeSSE({ event: 'stats', data: renderStats(counts) });
-    await stream.writeSSE({ event: 'auth', data: renderAuthStatus(currentAuthStatus) });
-    await stream.writeSSE({ event: 'paused', data: renderPausedBadge(isPaused) });
-    await stream.writeSSE({ event: 'syncing', data: renderSyncingBadge(currentSyncStatus) });
-    await stream.writeSSE({ event: 'pause-button', data: renderPauseButton(currentSyncStatus) });
+    await stream.writeSSE({ event: FRAG.stats, data: renderFragment(FRAG.stats, s) });
+    await stream.writeSSE({ event: FRAG.auth, data: renderFragment(FRAG.auth, s) });
+    await stream.writeSSE({ event: FRAG.paused, data: renderFragment(FRAG.paused, s) });
+    await stream.writeSSE({ event: FRAG.syncing, data: renderFragment(FRAG.syncing, s) });
+    await stream.writeSSE({ event: FRAG.pauseButton, data: renderFragment(FRAG.pauseButton, s) });
     await stream.writeSSE({
-      event: 'processing-title',
-      data: renderProcessingTitle(isPaused),
+      event: FRAG.processingTitle,
+      data: renderFragment(FRAG.processingTitle, s),
     });
     await stream.writeSSE({
-      event: 'processing-queue',
-      data: renderProcessingQueue(processingJobs),
+      event: FRAG.processingQueue,
+      data: renderFragment(FRAG.processingQueue, s),
     });
-    await stream.writeSSE({ event: 'blocked-queue', data: renderBlockedQueue(blockedJobs) });
-    await stream.writeSSE({ event: 'pending-queue', data: renderPendingQueue(pendingJobs) });
-    await stream.writeSSE({ event: 'recent-queue', data: renderRecentQueue(recentJobs) });
-    await stream.writeSSE({ event: 'retry-queue', data: renderRetryQueue(retryJobs) });
-    await stream.writeSSE({ event: 'stop-section', data: renderStopSection(currentSyncStatus) });
+    await stream.writeSSE({ event: FRAG.blockedQueue, data: renderFragment(FRAG.blockedQueue, s) });
+    await stream.writeSSE({ event: FRAG.pendingQueue, data: renderFragment(FRAG.pendingQueue, s) });
+    await stream.writeSSE({ event: FRAG.recentQueue, data: renderFragment(FRAG.recentQueue, s) });
+    await stream.writeSSE({ event: FRAG.retryQueue, data: renderFragment(FRAG.retryQueue, s) });
+    await stream.writeSSE({ event: FRAG.stopSection, data: renderFragment(FRAG.stopSection, s) });
 
     // Cleanup on close
     stream.onAbort(() => {
