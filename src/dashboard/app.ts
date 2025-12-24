@@ -8,13 +8,10 @@
  */
 
 import { Hono } from 'hono';
-import { serve } from '@hono/node-server';
 import { streamSSE } from 'hono/streaming';
-import { createReadStream, statSync, watchFile, unwatchFile, writeFileSync } from 'fs';
-import { readFile } from 'fs/promises';
+import { createReadStream, statSync, watchFile, unwatchFile } from 'fs';
 import { createInterface } from 'readline';
-import { join, dirname, basename } from 'path';
-import { fileURLToPath } from 'url';
+import { join, basename } from 'path';
 import { xdgState } from 'xdg-basedir';
 import { EventEmitter } from 'events';
 import {
@@ -53,8 +50,7 @@ import type { Config } from '../config.js';
 // Constants
 // ============================================================================
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname = import.meta.dir;
 const DASHBOARD_PORT = 4242;
 const LOG_FILE = join(xdgState || '', 'proton-drive-sync', 'sync.log');
 
@@ -1070,7 +1066,7 @@ let layoutHtml: string | null = null;
 
 async function getLayout(): Promise<string> {
   if (!layoutHtml) {
-    layoutHtml = await readFile(join(__dirname, 'layout.html'), 'utf-8');
+    layoutHtml = await Bun.file(join(__dirname, 'layout.html')).text();
   }
   return layoutHtml;
 }
@@ -1082,7 +1078,7 @@ app.get('/', async (c) => {
     return c.redirect('/controls');
   }
   const layout = await getLayout();
-  const content = await readFile(join(__dirname, 'home.html'), 'utf-8');
+  const content = await Bun.file(join(__dirname, 'home.html')).text();
   const html = await composePage(layout, content, {
     title: 'Proton Drive Sync',
     activeTab: 'home',
@@ -1094,7 +1090,7 @@ app.get('/', async (c) => {
 // Serve controls page
 app.get('/controls', async (c) => {
   const layout = await getLayout();
-  let content = await readFile(join(__dirname, 'controls.html'), 'utf-8');
+  let content = await Bun.file(join(__dirname, 'controls.html')).text();
   const isOnboarding = !hasFlag(FLAGS.ONBOARDED);
 
   // Replace button text/icons based on onboarding state
@@ -1119,9 +1115,9 @@ app.get('/controls', async (c) => {
 // Serve about page
 app.get('/about', async (c) => {
   const layout = await getLayout();
-  let content = await readFile(join(__dirname, 'about.html'), 'utf-8');
+  let content = await Bun.file(join(__dirname, 'about.html')).text();
   // Inject version from package.json
-  const pkg = JSON.parse(await readFile(join(__dirname, '../../package.json'), 'utf-8'));
+  const pkg = JSON.parse(await Bun.file(join(__dirname, '../../package.json')).text());
   content = content.replace('{{VERSION}}', pkg.version);
   const isOnboarded = hasFlag(FLAGS.ONBOARDED);
   content = content.replace('{{HIDE_START_BUTTON}}', isOnboarded ? 'hidden' : '');
@@ -1162,7 +1158,8 @@ app.get('/assets/:filename', async (c) => {
   const filename = c.req.param('filename');
   const filePath = join(__dirname, 'assets', filename);
   try {
-    const content = await readFile(filePath);
+    const file = Bun.file(filePath);
+    const content = await file.arrayBuffer();
     const ext = filename.split('.').pop();
     const contentType =
       ext === 'svg' ? 'image/svg+xml' : ext === 'png' ? 'image/png' : 'application/octet-stream';
@@ -1350,7 +1347,7 @@ app.post('/api/config', async (c) => {
     }
 
     // Write to config file
-    writeFileSync(CONFIG_FILE, JSON.stringify(newConfig, null, 2), 'utf-8');
+    await Bun.write(CONFIG_FILE, JSON.stringify(newConfig, null, 2));
 
     // Update local state
     currentConfig = newConfig;
@@ -1551,11 +1548,6 @@ export function runDashboardServer(): void {
   // Console logging is replaced with IPC logging so logs appear in the main process.
   enableIpcLogging();
 
-  const server = serve({
-    fetch: app.fetch,
-    port: DASHBOARD_PORT,
-  });
-
   /**
    * Safely send IPC message to parent process via stdout.
    */
@@ -1564,34 +1556,38 @@ export function runDashboardServer(): void {
       sendToParent(message);
     } catch {
       // stdout closed, parent exited - shut down gracefully
-      server.close();
       process.exit(0);
     }
   }
 
-  // Handle server errors (e.g., EADDRINUSE)
-  server.on('error', (err: NodeJS.ErrnoException) => {
-    safeSend({ type: 'error', error: err.message, code: err.code });
-    process.exit(1);
-  });
+  try {
+    const server = Bun.serve({
+      fetch: app.fetch,
+      port: DASHBOARD_PORT,
+      idleTimeout: 0, // Disable timeout - SSE connections stay open indefinitely
+    });
 
-  // Wait for server to be listening before notifying parent
-  server.on('listening', () => {
+    // Bun.serve() is synchronous - if we reach here, server is listening
     safeSend({ type: 'ready', port: DASHBOARD_PORT });
-  });
 
-  // Start reading messages from parent via stdin
-  readParentMessages();
+    // Start reading messages from parent via stdin
+    readParentMessages();
 
-  // Graceful shutdown helper - exit immediately
-  // SSE connections keep the server alive, so we can't wait for server.close()
-  function shutdown() {
-    process.exit(0);
+    // Graceful shutdown helper - exit immediately
+    // SSE connections keep the server alive, so we can't wait for server.stop()
+    function shutdown() {
+      server.stop();
+      process.exit(0);
+    }
+
+    // Graceful shutdown
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+  } catch (err) {
+    const error = err as Error & { code?: string };
+    safeSend({ type: 'error', error: error.message, code: error.code });
+    process.exit(1);
   }
-
-  // Graceful shutdown
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
 }
 
 /** Entry point - called when running as dashboard subprocess via 'start --dashboard' */

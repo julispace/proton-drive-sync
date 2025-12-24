@@ -10,14 +10,14 @@
  * - Parent directories are created automatically if they don't exist.
  */
 
-import { createReadStream, statSync, Stats } from 'fs';
+import { statSync, type Stats } from 'fs';
 import type {
   CreateProtonDriveClient,
   UploadMetadata,
   UploadController,
   CreateResult,
 } from './types.js';
-import { parsePath, findFileByName, findFolderByName, nodeStreamToWebStream } from './utils.js';
+import { parsePath, findFileByName, findFolderByName } from './utils.js';
 
 // Re-export the client type for backwards compatibility
 export type { CreateProtonDriveClient, CreateResult } from './types.js';
@@ -97,17 +97,11 @@ async function uploadFile(
 
   if (existingFileUid) {
     const revisionUploader = await client.getFileRevisionUploader(existingFileUid, metadata);
-
-    const nodeStream = createReadStream(localFilePath);
-    const webStream = nodeStreamToWebStream(nodeStream);
-
+    const webStream = Bun.file(localFilePath).stream();
     uploadController = await revisionUploader.uploadFromStream(webStream, []);
   } else {
     const fileUploader = await client.getFileUploader(targetFolderUid, fileName, metadata);
-
-    const nodeStream = createReadStream(localFilePath);
-    const webStream = nodeStreamToWebStream(nodeStream);
-
+    const webStream = Bun.file(localFilePath).stream();
     uploadController = await fileUploader.uploadFromStream(webStream, []);
   }
 

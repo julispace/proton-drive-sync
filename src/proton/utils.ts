@@ -5,7 +5,6 @@
  * Types are imported from types.ts.
  */
 
-import { Readable } from 'stream';
 import { basename, dirname } from 'path';
 import type { BaseProtonDriveClient, ParsedPath } from './types.js';
 
@@ -142,32 +141,6 @@ export async function traverseRemotePath(
   }
 
   return currentFolderUid;
-}
-
-// ============================================================================
-// Stream Utilities
-// ============================================================================
-
-/**
- * Convert a Node.js Readable stream to a Web ReadableStream
- */
-export function nodeStreamToWebStream(nodeStream: Readable): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    start(controller) {
-      nodeStream.on('data', (chunk: Buffer) => {
-        controller.enqueue(new Uint8Array(chunk));
-      });
-      nodeStream.on('end', () => {
-        controller.close();
-      });
-      nodeStream.on('error', (err) => {
-        controller.error(err);
-      });
-    },
-    cancel() {
-      nodeStream.destroy();
-    },
-  });
 }
 
 // ============================================================================

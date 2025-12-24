@@ -2,8 +2,7 @@
  * Service install/uninstall commands for macOS launchd
  */
 
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
-import { execSync } from 'child_process';
+import { existsSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import * as readline from 'readline';
@@ -37,19 +36,15 @@ const SERVICE_NAME = 'com.damianb-bitflipper.proton-drive-sync';
 const PLIST_PATH = join(PLIST_DIR, `${SERVICE_NAME}.plist`);
 
 function getWatchmanPathSafe(): string | null {
-  try {
-    return execSync('which watchman', { encoding: 'utf-8' }).trim();
-  } catch {
-    return null;
-  }
+  const result = Bun.spawnSync(['which', 'watchman']);
+  if (result.exitCode !== 0) return null;
+  return new TextDecoder().decode(result.stdout).trim();
 }
 
 function getBinPathSafe(): string | null {
-  try {
-    return execSync('which proton-drive-sync', { encoding: 'utf-8' }).trim();
-  } catch {
-    return null;
-  }
+  const result = Bun.spawnSync(['which', 'proton-drive-sync']);
+  if (result.exitCode !== 0) return null;
+  return new TextDecoder().decode(result.stdout).trim();
 }
 
 function generateWatchmanPlist(watchmanPath: string): string {
@@ -67,28 +62,20 @@ function generateSyncPlist(binPath: string): string {
 }
 
 function loadService(name: string, plistPath: string): void {
-  try {
-    execSync(`launchctl bootstrap gui/$(id -u) "${plistPath}"`, { stdio: 'ignore' });
-  } catch {
+  const uid = new TextDecoder().decode(Bun.spawnSync(['id', '-u']).stdout).trim();
+  const bootstrap = Bun.spawnSync(['launchctl', 'bootstrap', `gui/${uid}`, plistPath]);
+  if (bootstrap.exitCode !== 0) {
     // Already loaded, try kickstart instead
-    try {
-      execSync(`launchctl kickstart -k gui/$(id -u)/${name}`, { stdio: 'ignore' });
-    } catch {
-      // Ignore
-    }
+    Bun.spawnSync(['launchctl', 'kickstart', '-k', `gui/${uid}/${name}`]);
   }
 }
 
 function unloadService(name: string, plistPath: string): void {
-  try {
-    execSync(`launchctl bootout gui/$(id -u)/${name}`, { stdio: 'ignore' });
-  } catch {
+  const uid = new TextDecoder().decode(Bun.spawnSync(['id', '-u']).stdout).trim();
+  const bootout = Bun.spawnSync(['launchctl', 'bootout', `gui/${uid}/${name}`]);
+  if (bootout.exitCode !== 0) {
     // Try legacy unload
-    try {
-      execSync(`launchctl unload "${plistPath}"`, { stdio: 'ignore' });
-    } catch {
-      // Ignore if not loaded
-    }
+    Bun.spawnSync(['launchctl', 'unload', plistPath]);
   }
 }
 
@@ -133,7 +120,7 @@ export async function serviceInstallCommand(interactive: boolean = true): Promis
         if (existsSync(WATCHMAN_PLIST_PATH)) {
           unloadService(WATCHMAN_SERVICE_NAME, WATCHMAN_PLIST_PATH);
         }
-        writeFileSync(WATCHMAN_PLIST_PATH, generateWatchmanPlist(watchmanPath));
+        await Bun.write(WATCHMAN_PLIST_PATH, generateWatchmanPlist(watchmanPath));
         console.log(`Created: ${WATCHMAN_PLIST_PATH}`);
         loadService(WATCHMAN_SERVICE_NAME, WATCHMAN_PLIST_PATH);
         console.log('Watchman service installed and started.');
@@ -151,7 +138,7 @@ export async function serviceInstallCommand(interactive: boolean = true): Promis
     if (existsSync(PLIST_PATH)) {
       unloadService(SERVICE_NAME, PLIST_PATH);
     }
-    writeFileSync(PLIST_PATH, generateSyncPlist(binPath));
+    await Bun.write(PLIST_PATH, generateSyncPlist(binPath));
     console.log(`Created: ${PLIST_PATH}`);
     setFlag(FLAGS.SERVICE_INSTALLED);
     loadSyncService();

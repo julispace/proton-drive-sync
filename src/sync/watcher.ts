@@ -6,7 +6,6 @@
 
 import { realpathSync } from 'fs';
 import { basename } from 'path';
-import { execSync } from 'child_process';
 import watchman from 'fb-watchman';
 import { getClock, setClock } from '../state.js';
 import { logger } from '../logger.js';
@@ -51,18 +50,17 @@ const watchmanClient = new watchman.Client();
 /** Wait for Watchman to be available, retrying with delay */
 export async function waitForWatchman(maxAttempts = 30, delayMs = 1000): Promise<void> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      execSync('watchman version', { stdio: 'ignore' });
+    const result = Bun.spawnSync(['watchman', 'version']);
+    if (result.exitCode === 0) {
       return;
-    } catch {
-      if (attempt === maxAttempts) {
-        console.error('Error: Watchman failed to start.');
-        console.error('Install it from: https://facebook.github.io/watchman/docs/install');
-        process.exit(1);
-      }
-      logger.debug(`Waiting for watchman to start (attempt ${attempt}/${maxAttempts})...`);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+    if (attempt === maxAttempts) {
+      console.error('Error: Watchman failed to start.');
+      console.error('Install it from: https://facebook.github.io/watchman/docs/install');
+      process.exit(1);
+    }
+    logger.debug(`Waiting for watchman to start (attempt ${attempt}/${maxAttempts})...`);
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
 }
 

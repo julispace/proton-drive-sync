@@ -3,7 +3,6 @@
  */
 
 import { existsSync, readFileSync, unlinkSync } from 'fs';
-import { spawn } from 'child_process';
 import { join } from 'path';
 import { xdgState } from 'xdg-basedir';
 
@@ -28,11 +27,11 @@ export function logsCommand(options: LogsOptions): void {
 
   if (options.follow) {
     // Use tail -f to follow logs
-    const tail = spawn('tail', ['-f', LOG_PATH], {
-      stdio: 'inherit',
+    const tail = Bun.spawn(['tail', '-f', LOG_PATH], {
+      stdio: ['inherit', 'inherit', 'inherit'],
     });
 
-    tail.on('error', (err) => {
+    tail.exited.catch((err: Error) => {
       console.error('Failed to follow logs:', err.message);
       process.exit(1);
     });

@@ -106,7 +106,7 @@ export async function startCommand(options: StartOptions): Promise<void> {
   // Set debug level from CLI flag
   if (options.debug) {
     const level = options.debug;
-    process.env.DEBUG_LEVEL = String(level);
+    Bun.env.DEBUG_LEVEL = String(level);
     enableDebug();
     logger.debug(`Debug level ${level}: App debug enabled`);
     if (level >= 2) logger.debug(`Debug level ${level}: SDK debug enabled`);

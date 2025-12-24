@@ -6,8 +6,7 @@
  */
 
 import { type Subprocess } from 'bun';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { join } from 'path';
 import { watch } from 'fs';
 import { jobEvents, type JobEvent } from '../sync/queue.js';
 import { logger } from '../logger.js';
@@ -39,8 +38,7 @@ export type {
 // Constants
 // ============================================================================
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const __dirname = import.meta.dir;
 
 // Accumulate diffs for this interval before sending to child
 const DIFF_ACCUMULATE_MS = 100;
@@ -167,7 +165,7 @@ async function readChildMessages(stdout: ReadableStream<Uint8Array>): Promise<vo
         if (!msg) continue;
 
         if (msg.type === 'ready') {
-          const isDevMode = process.env.PROTON_DEV === '1';
+          const isDevMode = Bun.env.PROTON_DEV === '1';
           const hotReloadMsg = isDevMode ? ' (hot reload enabled)' : '';
           logger.info(`Dashboard running at http://localhost:${msg.port}${hotReloadMsg}`);
 
@@ -212,7 +210,7 @@ export function startDashboard(config: Config, dryRun = false): void {
   logger.debug(`Dashboard starting with dryRun=${dryRun}`);
 
   // Determine if we're running in dev mode (set by Makefile)
-  const isDevMode = process.env.PROTON_DEV === '1';
+  const isDevMode = Bun.env.PROTON_DEV === '1';
 
   // Spawn the dashboard subprocess
   // Both dev and prod use the same mechanism: 'start --dashboard'

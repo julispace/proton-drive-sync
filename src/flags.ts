@@ -58,7 +58,7 @@ export function isPaused(): boolean {
  * In dev mode (PROTON_DEV=1), forces lock acquisition for hot reload support.
  */
 export function acquireRunLock(): boolean {
-  const isDevMode = process.env.PROTON_DEV === '1';
+  const isDevMode = Bun.env.PROTON_DEV === '1';
 
   return db.transaction((tx) => {
     // Check if already running
