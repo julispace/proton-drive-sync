@@ -85,6 +85,42 @@ async function authenticateWithStatus(sdkDebug = false): Promise<ProtonDriveClie
 // ============================================================================
 
 /**
+ * Spawn a detached background process (daemon) and exit.
+ * The child process runs with --no-daemon to execute the actual sync.
+ */
+function spawnDaemon(options: StartOptions): void {
+  // Use process.execPath (bun) and process.argv[1] (script) to handle both:
+  // - Development: bun src/index.ts -> execPath=bun, argv[1]=src/index.ts
+  // - Production: ./dist/proton-drive-sync -> execPath=binary, argv[1]=binary
+  const execPath = process.execPath;
+  const scriptPath = process.argv[1];
+  const isBunRunningScript = execPath.endsWith('bun') && scriptPath !== execPath;
+
+  const cmd = isBunRunningScript ? execPath : scriptPath;
+  const args = isBunRunningScript ? [scriptPath, 'start', '--no-daemon'] : ['start', '--no-daemon'];
+
+  // Forward relevant flags to the daemon process
+  if (options.noWatch) args.push('--no-watch');
+  if (options.dryRun) args.push('--dry-run');
+  if (options.debug) args.push('--debug', String(options.debug));
+
+  // Forward environment variables needed for daemon
+  const env = { ...process.env };
+
+  const child = Bun.spawn([cmd, ...args], {
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+    env,
+  });
+
+  // Unref so parent can exit without waiting for child
+  child.unref();
+
+  console.log(`Started daemon process (PID: ${child.pid})`);
+  process.exit(0);
+}
+
+/**
  * Main entry point for the sync command.
  */
 export async function startCommand(options: StartOptions): Promise<void> {
@@ -103,6 +139,14 @@ export async function startCommand(options: StartOptions): Promise<void> {
     process.exit(1);
   }
 
+  // Daemonize: spawn background process and exit
+  if (!options.noDaemon) {
+    spawnDaemon(options);
+    return;
+  }
+
+  // From here on, we're running in foreground (--no-daemon mode)
+
   // Set debug level from CLI flag
   if (options.debug) {
     const level = options.debug;
@@ -110,11 +154,6 @@ export async function startCommand(options: StartOptions): Promise<void> {
     enableDebug();
     logger.debug(`Debug level ${level}: App debug enabled`);
     if (level >= 2) logger.debug(`Debug level ${level}: SDK debug enabled`);
-  }
-
-  // Disable console logging when not connected to a TTY (running as background service)
-  if (!process.stdout.isTTY) {
-    disableConsoleLogging();
   }
 
   // Handle dry-run mode
