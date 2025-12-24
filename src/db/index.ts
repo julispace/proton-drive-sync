@@ -12,12 +12,22 @@ import { drizzle } from 'drizzle-orm/bun-sqlite';
 import * as schema from './schema.js';
 
 // Import migrations as text (embedded at compile time)
+// When adding new migrations, add a new import and entry to the migrations array below
 import migration0000 from './migrations/0000_hot_whizzer.sql' with { type: 'text' };
 import migration0001 from './migrations/0001_unique_invisible_woman.sql' with { type: 'text' };
 import migration0002 from './migrations/0002_flowery_apocalypse.sql' with { type: 'text' };
 import migration0003 from './migrations/0003_real_sharon_carter.sql' with { type: 'text' };
 import migration0004 from './migrations/0004_wise_mockingbird.sql' with { type: 'text' };
 import migration0005 from './migrations/0005_opposite_venom.sql' with { type: 'text' };
+
+const migrations = [
+  { id: '0000_hot_whizzer', sql: migration0000 },
+  { id: '0001_unique_invisible_woman', sql: migration0001 },
+  { id: '0002_flowery_apocalypse', sql: migration0002 },
+  { id: '0003_real_sharon_carter', sql: migration0003 },
+  { id: '0004_wise_mockingbird', sql: migration0004 },
+  { id: '0005_opposite_venom', sql: migration0005 },
+];
 
 // ============================================================================
 // Constants
@@ -30,16 +40,6 @@ if (!xdgState) {
 
 export const STATE_DIR = join(xdgState, 'proton-drive-sync');
 const DB_PATH = join(STATE_DIR, 'state.db');
-
-// Migrations in order
-const migrations = [
-  { id: '0000_hot_whizzer', sql: migration0000 },
-  { id: '0001_unique_invisible_woman', sql: migration0001 },
-  { id: '0002_flowery_apocalypse', sql: migration0002 },
-  { id: '0003_real_sharon_carter', sql: migration0003 },
-  { id: '0004_wise_mockingbird', sql: migration0004 },
-  { id: '0005_opposite_venom', sql: migration0005 },
-];
 
 // ============================================================================
 // Migration Runner
