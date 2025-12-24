@@ -146,6 +146,8 @@ print_message() {
     echo -e "${color}${message}${NC}"
 }
 
+skip_download=false
+
 check_version() {
     if command -v proton-drive-sync >/dev/null 2>&1; then
         installed_version=$(proton-drive-sync --version 2>/dev/null || echo "0.0.0")
@@ -155,7 +157,7 @@ check_version() {
             print_message info "${MUTED}Installed version: ${NC}$installed_version"
         else
             print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed${NC}"
-            exit 0
+            skip_download=true
         fi
     fi
 }
@@ -175,7 +177,9 @@ download_and_install() {
 }
 
 check_version
-download_and_install
+if [[ "$skip_download" != "true" ]]; then
+    download_and_install
+fi
 
 add_to_path() {
     local config_file=$1
