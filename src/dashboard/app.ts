@@ -159,9 +159,7 @@ function renderStats(counts: {
   <!-- Pending -->
   <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-sm hover:border-amber-500/50 transition-colors group relative overflow-hidden">
     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-      <svg class="w-12 h-12 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
+      <i data-lucide="clock" class="w-12 h-12 text-amber-500"></i>
     </div>
     <dt class="text-sm font-medium text-gray-400">Pending</dt>
     <dd class="mt-2 text-3xl font-bold text-white group-hover:text-amber-400 transition-colors">${counts.pending}</dd>
@@ -170,9 +168,7 @@ function renderStats(counts: {
   <!-- Processing -->
   <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-sm hover:border-blue-500/50 transition-colors group relative overflow-hidden">
     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-      <svg class="w-12 h-12 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-      </svg>
+      <i data-lucide="refresh-cw" class="w-12 h-12 text-blue-500"></i>
     </div>
     <dt class="text-sm font-medium text-gray-400">Processing</dt>
     <dd class="mt-2 text-3xl font-bold text-white group-hover:text-blue-400 transition-colors">${counts.processing}</dd>
@@ -181,9 +177,7 @@ function renderStats(counts: {
   <!-- Synced -->
   <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-sm hover:border-green-500/50 transition-colors group relative overflow-hidden">
     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-      <svg class="w-12 h-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-      </svg>
+      <i data-lucide="check" class="w-12 h-12 text-green-500"></i>
     </div>
     <dt class="text-sm font-medium text-gray-400">Synced</dt>
     <dd class="mt-2 text-3xl font-bold text-white group-hover:text-green-400 transition-colors">${counts.synced}</dd>
@@ -192,9 +186,7 @@ function renderStats(counts: {
   <!-- Blocked -->
   <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-sm hover:border-red-500/50 transition-colors group relative overflow-hidden">
     <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-      <svg class="w-12 h-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-      </svg>
+      <i data-lucide="triangle-alert" class="w-12 h-12 text-red-500"></i>
     </div>
     <dt class="text-sm font-medium text-gray-400">Blocked</dt>
     <dd class="mt-2 text-3xl font-bold text-white group-hover:text-red-400 transition-colors">${counts.blocked}</dd>
@@ -222,21 +214,15 @@ function renderProcessingQueue(jobs: DashboardJob[]): string {
     jobs.length === 0
       ? `
 <div class="h-full flex flex-col items-center justify-center text-gray-500 space-y-2">
-  <svg class="w-10 h-10 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
-  </svg>
+  <i data-lucide="zap" class="w-10 h-10 opacity-20"></i>
   <p class="text-sm">Queue is empty</p>
 </div>`
       : (() => {
           const isActive =
             currentSyncStatus === 'syncing' && currentAuthStatus.status === 'authenticated';
           const icon = isActive
-            ? `<svg class="w-4 h-4 text-blue-500 mt-0.5 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>`
-            : `<svg class="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>`;
+            ? `<i data-lucide="refresh-cw" class="w-4 h-4 text-blue-500 mt-0.5 shrink-0 animate-spin"></i>`
+            : `<i data-lucide="clock" class="w-4 h-4 text-amber-500 mt-0.5 shrink-0"></i>`;
 
           return `<div class="space-y-1">${jobs
             .map(
@@ -277,9 +263,7 @@ function renderBlockedQueue(jobs: DashboardJob[]): string {
     jobs.length === 0
       ? `
 <div class="h-full flex flex-col items-center justify-center text-gray-500 space-y-2">
-  <svg class="w-10 h-10 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
+  <i data-lucide="circle-check" class="w-10 h-10 opacity-20"></i>
   <p class="text-sm">All systems nominal</p>
 </div>`
       : `<div class="space-y-1">${jobs
@@ -287,9 +271,7 @@ function renderBlockedQueue(jobs: DashboardJob[]): string {
             (job) => `
 <div class="px-3 py-2.5 rounded-lg bg-red-500/5 border border-red-500/20 hover:bg-red-500/10 transition-colors group">
   <div class="flex items-start gap-3">
-    <svg class="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-    </svg>
+    <i data-lucide="triangle-alert" class="w-4 h-4 text-red-500 mt-0.5 shrink-0"></i>
     <div class="min-w-0 flex-1">
       <div class="text-xs font-mono text-red-200 truncate">${escapeHtml(formatPath(job.localPath))}</div>
       <div class="text-[10px] text-red-400/70 mt-1 line-clamp-2">${escapeHtml(job.lastError || '')}</div>
@@ -331,9 +313,7 @@ function renderRecentQueue(jobs: DashboardJob[]): string {
           .map(
             (job) => `
 <div class="px-3 py-2 rounded-lg hover:bg-gray-700/50 transition-colors flex items-center gap-3">
-  <svg class="w-4 h-4 text-green-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-  </svg>
+  <i data-lucide="check" class="w-4 h-4 text-green-500 shrink-0"></i>
   <div class="min-w-0 flex-1 flex items-center justify-between gap-4">
     <span class="text-xs font-mono text-gray-300 truncate">${escapeHtml(formatPath(job.localPath))}</span>
     <span class="text-[10px] text-gray-500 font-mono whitespace-nowrap">${formatTime(job.createdAt)}</span>
@@ -371,9 +351,7 @@ function renderPendingQueue(jobs: DashboardJob[]): string {
           .map(
             (job) => `
 <div class="px-3 py-2 rounded-lg hover:bg-gray-700/50 transition-colors flex items-center gap-3">
-  <svg class="w-4 h-4 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
+  <i data-lucide="clock" class="w-4 h-4 text-amber-500 shrink-0"></i>
   <div class="min-w-0 flex-1">
     <span class="text-xs font-mono text-gray-300 truncate block">${escapeHtml(formatPath(job.localPath))}</span>
   </div>
@@ -397,9 +375,7 @@ function renderRetryQueue(jobs: DashboardJob[]): string {
   hx-swap="innerHTML"
   class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-orange-500/30 hover:border-orange-500/50 hover:bg-orange-500/10 transition-colors cursor-pointer"
 >
-  <svg class="h-3 w-3 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-  </svg>
+  <i data-lucide="refresh-cw" class="h-3 w-3 text-orange-400"></i>
   <span class="text-xs font-medium text-orange-400">Retry All Now</span>
 </button>`
       : '';
@@ -420,9 +396,7 @@ function renderRetryQueue(jobs: DashboardJob[]): string {
     jobs.length === 0
       ? `
 <div class="h-full flex flex-col items-center justify-center text-gray-500 space-y-2">
-  <svg class="w-10 h-10 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
+  <i data-lucide="circle-check" class="w-10 h-10 opacity-20"></i>
   <p class="text-sm">No scheduled retries</p>
 </div>`
       : `<div class="space-y-1">${jobs
@@ -434,9 +408,7 @@ function renderRetryQueue(jobs: DashboardJob[]): string {
               : '';
             return `
 <div class="px-3 py-2 rounded-lg hover:bg-gray-700/50 transition-colors flex items-center gap-3">
-  <svg class="w-4 h-4 text-orange-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-  </svg>
+  <i data-lucide="refresh-cw" class="w-4 h-4 text-orange-500 shrink-0"></i>
   <div class="min-w-0 flex-1 flex items-center justify-between gap-4">
     <span class="text-xs font-mono text-gray-300 truncate">${escapeHtml(formatPath(job.localPath))}</span>
     <span class="text-[10px] text-orange-400 font-mono whitespace-nowrap retry-countdown" data-retry-at="${retryAtIso}"></span>
@@ -455,25 +427,25 @@ function renderAuthStatus(auth: AuthStatusUpdate): string {
   const statusConfig = {
     unauthenticated: {
       border: 'border-gray-500/30 bg-gray-500/10',
-      icon: `<svg class="h-3 w-3 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`,
+      icon: `<i data-lucide="clock" class="h-3 w-3 text-gray-400"></i>`,
       text: 'text-gray-400',
       label: 'Not authenticated',
     },
     authenticating: {
       border: 'border-amber-500/30 bg-amber-500/10',
-      icon: `<svg class="animate-spin h-3 w-3 text-amber-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`,
+      icon: `<i data-lucide="loader-circle" class="animate-spin h-3 w-3 text-amber-400"></i>`,
       text: 'text-amber-400',
       label: 'Authenticating...',
     },
     authenticated: {
       border: 'border-green-500/30 bg-green-500/10',
-      icon: `<svg class="h-3 w-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" /></svg>`,
+      icon: `<i data-lucide="check" class="h-3 w-3 text-green-400"></i>`,
       text: 'text-green-400',
       label: '', // Set below after status check
     },
     failed: {
       border: 'border-red-500/30 bg-red-500/10',
-      icon: `<svg class="h-3 w-3 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" /></svg>`,
+      icon: `<i data-lucide="x" class="h-3 w-3 text-red-400"></i>`,
       text: 'text-red-400',
       label: 'Auth Failed',
     },
@@ -518,7 +490,7 @@ function renderStopSection(syncStatus: string): string {
       id="stop-button"
       class="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-colors"
     >
-      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1" /></svg>
+      <i data-lucide="square" class="w-4 h-4"></i>
       Stop
     </button>
   </div>
@@ -530,9 +502,7 @@ function renderPausedBadge(isPaused: boolean): string {
   if (!isPaused) return '';
   return `
 <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-amber-500/30 bg-amber-500/10">
-  <svg class="h-3 w-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
+  <i data-lucide="circle-pause" class="h-3 w-3 text-amber-400"></i>
   <span class="text-xs font-medium text-amber-400">Paused</span>
 </div>`;
 }
@@ -584,10 +554,7 @@ function renderPauseButton(syncStatus: SyncStatus): string {
   hx-swap="outerHTML"
   class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-green-500/30 hover:border-green-500/50 hover:bg-green-500/10 transition-colors cursor-pointer"
 >
-  <svg class="h-3 w-3 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
+  <i data-lucide="circle-play" class="h-3 w-3 text-green-400"></i>
   <span class="text-xs font-medium text-green-400">Resume Sync</span>
 </button>`;
   }
@@ -599,9 +566,7 @@ function renderPauseButton(syncStatus: SyncStatus): string {
   hx-swap="outerHTML"
   class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-gray-600 hover:border-amber-500/50 hover:bg-amber-500/10 transition-colors cursor-pointer"
 >
-  <svg class="h-3 w-3 text-gray-400 hover:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-  </svg>
+  <i data-lucide="circle-pause" class="h-3 w-3 text-gray-400 hover:text-amber-400"></i>
   <span class="text-xs font-medium text-gray-400">Pause Sync</span>
 </button>`;
 }
@@ -612,9 +577,7 @@ function renderDryRunBanner(dryRun: boolean): string {
   return `
 <div class="bg-amber-500/90 text-amber-950 px-4 py-2.5 text-center font-medium text-sm shadow-lg">
   <div class="flex items-center justify-center gap-2">
-    <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-    </svg>
+    <i data-lucide="triangle-alert" class="w-5 h-5"></i>
     <span>DRY-RUN MODE - No changes are being synced. Information shown may be incorrect.</span>
   </div>
 </div>`;
@@ -695,20 +658,14 @@ function renderConfigInfo(config: Config | null): string {
       return `
     <div class="flex items-center gap-2 px-3 py-1.5 bg-gray-900 border border-gray-700 rounded-md shadow-sm group hover:border-gray-600 transition-colors">
       <div class="flex items-center gap-2">
-        <svg class="w-3.5 h-3.5 text-gray-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-        </svg>
+        <i data-lucide="folder" class="w-3.5 h-3.5 text-gray-500 shrink-0"></i>
         <span class="font-mono text-xs text-gray-300">${escapeHtml(dir.source_path)}</span>
       </div>
       
-      <svg class="w-3 h-3 text-gray-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-      </svg>
+      <i data-lucide="arrow-right" class="w-3 h-3 text-gray-600 shrink-0"></i>
 
       <div class="flex items-center gap-2">
-        <svg class="w-3.5 h-3.5 text-indigo-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-        </svg>
+        <i data-lucide="cloud" class="w-3.5 h-3.5 text-indigo-400 shrink-0"></i>
         <span class="font-mono text-xs text-indigo-300">${escapeHtml(remotePath)}</span>
       </div>
     </div>`;
