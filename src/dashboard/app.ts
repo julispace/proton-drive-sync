@@ -430,12 +430,16 @@ function renderSyncingBadge(syncStatus: SyncStatus): string {
 </div>`;
 }
 
-/** Render pause/resume button */
-function renderPauseButton(isPaused: boolean): string {
-  if (isPaused) {
+/** Render pause/resume button (hidden when disconnected) */
+function renderPauseButton(syncStatus: SyncStatus): string {
+  if (syncStatus === 'disconnected') {
+    return '<div id="pause-button"></div>';
+  }
+  if (syncStatus === 'paused') {
     // Show resume button
     return `
 <button
+  id="pause-button"
   hx-post="/api/toggle-pause"
   hx-swap="outerHTML"
   class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-green-500/30 hover:border-green-500/50 hover:bg-green-500/10 transition-colors cursor-pointer"
@@ -446,10 +450,11 @@ function renderPauseButton(isPaused: boolean): string {
   </svg>
   <span class="text-xs font-medium text-green-400">Resume Sync</span>
 </button>`;
-  } else {
-    // Show pause button
-    return `
+  }
+  // Show pause button (syncing state)
+  return `
 <button
+  id="pause-button"
   hx-post="/api/toggle-pause"
   hx-swap="outerHTML"
   class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gray-900 border border-gray-600 hover:border-amber-500/50 hover:bg-amber-500/10 transition-colors cursor-pointer"
@@ -459,7 +464,6 @@ function renderPauseButton(isPaused: boolean): string {
   </svg>
   <span class="text-xs font-medium text-gray-400">Pause Sync</span>
 </button>`;
-  }
 }
 
 /** Render dry-run banner HTML */
@@ -1043,7 +1047,7 @@ app.get('/api/fragments/config-info', (c) => {
 });
 
 app.get('/api/fragments/pause-button', (c) => {
-  return c.html(renderPauseButton(currentSyncStatus === 'paused'));
+  return c.html(renderPauseButton(currentSyncStatus));
 });
 
 app.get('/api/fragments/retry-all-button', (c) => {
@@ -1062,21 +1066,17 @@ app.post('/api/onboard', (c) => {
 
 /** Toggle pause state */
 app.post('/api/toggle-pause', (c) => {
-  if (currentSyncStatus === 'paused') {
+  const isPaused = currentSyncStatus === 'paused';
+  if (isPaused) {
     clearFlag(FLAGS.PAUSED);
-    currentSyncStatus = 'syncing';
     sendSignal('resume-sync');
   } else {
     setFlag(FLAGS.PAUSED);
-    currentSyncStatus = 'paused';
     sendSignal('pause-sync');
   }
-  // Emit status event so all SSE clients get updated
-  statusEvents.emit('status', {
-    auth: currentAuthStatus,
-    syncStatus: currentSyncStatus,
-  });
-  return c.html(renderPauseButton(currentSyncStatus === 'paused'));
+  // Return the new button state (optimistic UI update for button only)
+  // The badge will update via the heartbeat path when the engine responds
+  return c.html(renderPauseButton(isPaused ? 'syncing' : 'paused'));
 });
 
 /** Handle signals from dashboard */
@@ -1189,7 +1189,7 @@ app.get('/api/events', async (c) => {
       stream.writeSSE({ event: 'auth', data: renderAuthStatus(status.auth) });
       stream.writeSSE({ event: 'paused', data: renderPausedBadge(isPaused) });
       stream.writeSSE({ event: 'syncing', data: renderSyncingBadge(status.syncStatus) });
-      stream.writeSSE({ event: 'pause-button', data: renderPauseButton(isPaused) });
+      stream.writeSSE({ event: 'pause-button', data: renderPauseButton(status.syncStatus) });
       stream.writeSSE({ event: 'processing-title', data: renderProcessingTitle(isPaused) });
       // Re-render processing list to update icons based on pause state
       stream.writeSSE({ event: 'processing', data: renderProcessingList(getProcessingJobs()) });
@@ -1219,7 +1219,7 @@ app.get('/api/events', async (c) => {
     await stream.writeSSE({ event: 'auth', data: renderAuthStatus(currentAuthStatus) });
     await stream.writeSSE({ event: 'paused', data: renderPausedBadge(isPaused) });
     await stream.writeSSE({ event: 'syncing', data: renderSyncingBadge(currentSyncStatus) });
-    await stream.writeSSE({ event: 'pause-button', data: renderPauseButton(isPaused) });
+    await stream.writeSSE({ event: 'pause-button', data: renderPauseButton(currentSyncStatus) });
     await stream.writeSSE({
       event: 'processing-title',
       data: renderProcessingTitle(isPaused),
