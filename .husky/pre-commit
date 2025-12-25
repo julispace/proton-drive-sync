@@ -1,1 +1,1 @@
-pnpm exec lint-staged
+make pre-commit

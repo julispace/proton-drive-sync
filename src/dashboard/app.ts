@@ -55,25 +55,15 @@ import { RetryQueue } from './views/fragments/RetryQueue.js';
 import { PauseButton } from './views/fragments/PauseButton.js';
 
 // Embed HTML templates at compile time as text (required for compiled binaries)
-import layoutHtmlTemplate from './layout.html' with { type: 'text' };
-import homeHtmlTemplate from './home.html' with { type: 'text' };
-import controlsHtmlTemplate from './controls.html' with { type: 'text' };
-import aboutHtmlTemplate from './about.html' with { type: 'text' };
+import layoutHtml from './layout.html.txt';
+import homeHtml from './home.html.txt';
+import controlsHtml from './controls.html.txt';
+import aboutHtml from './about.html.txt';
 
 // Embed page scripts at compile time
-import homeScripts from './scripts/home.scripts.html' with { type: 'text' };
-import controlsScripts from './scripts/controls.scripts.html' with { type: 'text' };
-import aboutScripts from './scripts/about.scripts.html' with { type: 'text' };
-
-// Cast to string (Bun types these as HTMLBundle but they're strings at runtime)
-// See: https://github.com/oven-sh/bun/issues - import attributes not reflected in types
-const layoutHtml = layoutHtmlTemplate as unknown as string;
-const homeHtml = homeHtmlTemplate as unknown as string;
-const controlsHtml = controlsHtmlTemplate as unknown as string;
-const aboutHtml = aboutHtmlTemplate as unknown as string;
-const homeScriptsHtml = homeScripts as unknown as string;
-const controlsScriptsHtml = controlsScripts as unknown as string;
-const aboutScriptsHtml = aboutScripts as unknown as string;
+import homeScriptsHtml from './scripts/home.scripts.txt';
+import controlsScriptsHtml from './scripts/controls.scripts.txt';
+import aboutScriptsHtml from './scripts/about.scripts.txt';
 
 // Embed assets at compile time (required for compiled binaries)
 import iconSvg from './assets/icon.svg' with { type: 'text' };
