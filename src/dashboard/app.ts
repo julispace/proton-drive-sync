@@ -208,6 +208,8 @@ async function readParentMessages(): Promise<void> {
 /** Render stats cards HTML */
 function renderStats(counts: {
   pending: number;
+  pendingReady: number;
+  retry: number;
   processing: number;
   synced: number;
   blocked: number;
@@ -216,32 +218,33 @@ function renderStats(counts: {
 }
 
 /** Render processing queue HTML (header with pause button + list) */
-function renderProcessingQueue(jobs: DashboardJob[]): string {
+function renderProcessingQueue(jobs: DashboardJob[], count: number): string {
   return ProcessingQueue({
     jobs,
+    count,
     syncStatus: currentSyncStatus,
     authStatus: currentAuthStatus,
   })!.toString();
 }
 
 /** Render blocked queue HTML (header + list) */
-function renderBlockedQueue(jobs: DashboardJob[]): string {
-  return BlockedQueue({ jobs })!.toString();
+function renderBlockedQueue(jobs: DashboardJob[], count: number): string {
+  return BlockedQueue({ jobs, count })!.toString();
 }
 
 /** Render recent queue HTML (header + list) */
-function renderRecentQueue(jobs: DashboardJob[]): string {
-  return RecentQueue({ jobs })!.toString();
+function renderRecentQueue(jobs: DashboardJob[], count: number): string {
+  return RecentQueue({ jobs, count })!.toString();
 }
 
 /** Render pending queue HTML (header + list) */
-function renderPendingQueue(jobs: DashboardJob[]): string {
-  return PendingQueue({ jobs })!.toString();
+function renderPendingQueue(jobs: DashboardJob[], count: number): string {
+  return PendingQueue({ jobs, count })!.toString();
 }
 
 /** Render retry queue HTML (header with button + list) */
-function renderRetryQueue(jobs: DashboardJob[]): string {
-  return RetryQueue({ jobs })!.toString();
+function renderRetryQueue(jobs: DashboardJob[], count: number): string {
+  return RetryQueue({ jobs, count })!.toString();
 }
 
 /** Render auth status HTML */
@@ -480,15 +483,15 @@ export function renderFragment(key: FragmentKey, s: DashboardSnapshot): string {
     case FRAG.stats:
       return renderStats(s.counts);
     case FRAG.processingQueue:
-      return renderProcessingQueue(s.processing);
+      return renderProcessingQueue(s.processing, s.counts.processing);
     case FRAG.blockedQueue:
-      return renderBlockedQueue(s.blocked);
+      return renderBlockedQueue(s.blocked, s.counts.blocked);
     case FRAG.pendingQueue:
-      return renderPendingQueue(s.pending);
+      return renderPendingQueue(s.pending, s.counts.pendingReady);
     case FRAG.recentQueue:
-      return renderRecentQueue(s.recent);
+      return renderRecentQueue(s.recent, s.counts.synced);
     case FRAG.retryQueue:
-      return renderRetryQueue(s.retry);
+      return renderRetryQueue(s.retry, s.counts.retry);
     case FRAG.auth:
       return renderAuthStatus(s.auth);
     case FRAG.paused:
@@ -748,7 +751,8 @@ app.post('/api/signal/:signal', (c) => {
       blocked: [],
       retry: getRetryJobs(50),
     });
-    return c.html(renderRetryQueue(getRetryJobs(50)));
+    const s = snapshot();
+    return c.html(renderRetryQueue(s.retry, s.counts.retry));
   }
 
   if (signal === 'stop') {

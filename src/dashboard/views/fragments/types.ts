@@ -5,6 +5,8 @@ export type { DashboardJob, AuthStatusUpdate, SyncStatus, Config };
 
 export type JobCounts = {
   pending: number;
+  pendingReady: number;
+  retry: number;
   processing: number;
   synced: number;
   blocked: number;

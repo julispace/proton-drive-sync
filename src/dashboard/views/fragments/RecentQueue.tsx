@@ -4,9 +4,10 @@ import { formatPath, formatTime } from './utils.js';
 
 type Props = {
   jobs: DashboardJob[];
+  count: number;
 };
 
-export const RecentQueue: FC<Props> = ({ jobs }) => {
+export const RecentQueue: FC<Props> = ({ jobs, count }) => {
   return (
     <>
       {/* Header */}
@@ -17,7 +18,7 @@ export const RecentQueue: FC<Props> = ({ jobs }) => {
         </h2>
         <div class="flex items-center gap-3">
           <div class="h-7"></div>
-          <span class="text-xs font-mono text-gray-500">{jobs.length} items</span>
+          <span class="text-xs font-mono text-gray-500">{count} items</span>
         </div>
       </div>
 

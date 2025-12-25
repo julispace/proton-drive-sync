@@ -6,11 +6,12 @@ import { formatPath } from './utils.js';
 
 type Props = {
   jobs: DashboardJob[];
+  count: number;
   syncStatus: SyncStatus;
   authStatus: AuthStatusUpdate;
 };
 
-export const ProcessingQueue: FC<Props> = ({ jobs, syncStatus, authStatus }) => {
+export const ProcessingQueue: FC<Props> = ({ jobs, count, syncStatus, authStatus }) => {
   const isPaused = syncStatus === 'paused';
   const isActive = syncStatus === 'syncing' && authStatus.status === 'authenticated';
 
@@ -31,7 +32,7 @@ export const ProcessingQueue: FC<Props> = ({ jobs, syncStatus, authStatus }) => 
         </h2>
         <div class="flex items-center gap-3">
           <div id="pause-button">{raw(PauseButton({ syncStatus }))}</div>
-          <span class="text-xs font-mono text-gray-500">{jobs.length} items</span>
+          <span class="text-xs font-mono text-gray-500">{count} items</span>
         </div>
       </div>
 

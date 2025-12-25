@@ -4,9 +4,10 @@ import { formatPath } from './utils.js';
 
 type Props = {
   jobs: DashboardJob[];
+  count: number;
 };
 
-export const RetryQueue: FC<Props> = ({ jobs }) => {
+export const RetryQueue: FC<Props> = ({ jobs, count }) => {
   return (
     <>
       {/* Header */}
@@ -29,7 +30,7 @@ export const RetryQueue: FC<Props> = ({ jobs }) => {
           ) : (
             <div class="h-7"></div>
           )}
-          <span class="text-xs font-mono text-gray-500">{jobs.length} items</span>
+          <span class="text-xs font-mono text-gray-500">{count} items</span>
         </div>
       </div>
 

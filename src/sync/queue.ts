@@ -503,31 +503,40 @@ export function scheduleRetry(
 
 /**
  * Get counts of jobs by status.
+ * Uses conditional aggregation for efficient single-query counting.
  */
 export function getJobCounts(): {
   pending: number;
+  pendingReady: number;
+  retry: number;
   processing: number;
   synced: number;
   blocked: number;
 } {
-  const rows = db
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  const result = db
     .select({
-      status: schema.syncJobs.status,
-      count: sql<number>`count(*)`,
+      pendingReady: sql<number>`SUM(CASE WHEN ${schema.syncJobs.status} = ${SyncJobStatus.PENDING} AND ${schema.syncJobs.retryAt} <= ${nowSeconds} THEN 1 ELSE 0 END)`,
+      retry: sql<number>`SUM(CASE WHEN ${schema.syncJobs.status} = ${SyncJobStatus.PENDING} AND ${schema.syncJobs.retryAt} > ${nowSeconds} THEN 1 ELSE 0 END)`,
+      processing: sql<number>`SUM(CASE WHEN ${schema.syncJobs.status} = ${SyncJobStatus.PROCESSING} THEN 1 ELSE 0 END)`,
+      synced: sql<number>`SUM(CASE WHEN ${schema.syncJobs.status} = ${SyncJobStatus.SYNCED} THEN 1 ELSE 0 END)`,
+      blocked: sql<number>`SUM(CASE WHEN ${schema.syncJobs.status} = ${SyncJobStatus.BLOCKED} THEN 1 ELSE 0 END)`,
     })
     .from(schema.syncJobs)
-    .groupBy(schema.syncJobs.status)
-    .all();
+    .get();
 
-  const counts = { pending: 0, processing: 0, synced: 0, blocked: 0 };
-  for (const row of rows) {
-    if (row.status === SyncJobStatus.PENDING) counts.pending = row.count;
-    else if (row.status === SyncJobStatus.PROCESSING) counts.processing = row.count;
-    else if (row.status === SyncJobStatus.SYNCED) counts.synced = row.count;
-    else if (row.status === SyncJobStatus.BLOCKED) counts.blocked = row.count;
-  }
+  const pendingReady = result?.pendingReady ?? 0;
+  const retry = result?.retry ?? 0;
 
-  return counts;
+  return {
+    pending: pendingReady + retry,
+    pendingReady,
+    retry,
+    processing: result?.processing ?? 0,
+    synced: result?.synced ?? 0,
+    blocked: result?.blocked ?? 0,
+  };
 }
 
 /**

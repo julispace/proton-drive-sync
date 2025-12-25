@@ -6,11 +6,11 @@
 - `make build` - compile standalone binary to dist/proton-drive-sync
 - `make run ARGS="<cmd>"` - run one-off command (e.g., `make run ARGS="status"`)
 - `make dev ARGS="start"` - run with auto-reload on file changes
-- `make pre-commit` - run eslint --fix and prettier on all files
+- `make pre-commit` - run eslint --fix, prettier, and type-check
 - `make build-check` - type-check without emitting files
 - `make db-inspect` - open Drizzle Studio to inspect SQLite database
 - `make clean` - remove dist/ build artifacts
-- No test suite exists in this project
+- No test suite exists in this project; use `make pre-commit` to validate linting and types
 
 ## Code Style
 
