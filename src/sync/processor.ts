@@ -206,19 +206,29 @@ async function processJob(
         `Job ${id} (${localPath}) failed permanently after ${maxRetries} retries: ${errorMessage}`
       );
       markJobBlocked(id, localPath, errorMessage, dryRun);
-    } else if (errorCategory === ErrorCategory.REUPLOAD_NEEDED && nRetries >= maxRetries) {
-      // Proton drive draft revision state corruption - delete and recreate
-      logger.warn(
-        `Job ${id} (${localPath}) hit max draft revision retries (${maxRetries}), deleting and recreating`
-      );
-      try {
-        await deleteAndRecreateNode(client, localPath, remotePath!, dryRun);
-        markJobSynced(id, localPath, dryRun);
-      } catch (recreateError) {
-        const recreateErrorMsg = getErrorMessage(recreateError);
-        logger.error(`Failed to delete+recreate node: ${recreateErrorMsg}`);
-        setJobError(id, recreateErrorMsg, dryRun);
-        scheduleRetry(id, localPath, 0, errorCategory, dryRun);
+    } else if (errorCategory === ErrorCategory.REUPLOAD_NEEDED) {
+      if (nRetries >= maxRetries) {
+        // Exceeded max retries, move to blocked queue
+        logger.error(
+          `Job ${id} (${localPath}) failed permanently after ${maxRetries} retries: ${errorMessage}`
+        );
+        markJobBlocked(id, localPath, errorMessage, dryRun);
+      } else if (nRetries >= 2) {
+        // Retry count >= 2, attempt delete+recreate
+        logger.warn(`Job ${id} (${localPath}) retry ${nRetries}, attempting delete+recreate`);
+        try {
+          await deleteAndRecreateNode(client, localPath, remotePath!, dryRun);
+          markJobSynced(id, localPath, dryRun);
+        } catch (recreateError) {
+          const recreateErrorMsg = getErrorMessage(recreateError);
+          logger.error(`Failed to delete+recreate node: ${recreateErrorMsg}`);
+          setJobError(id, recreateErrorMsg, dryRun);
+          scheduleRetry(id, localPath, nRetries, errorCategory, dryRun);
+        }
+      } else {
+        // Retry count < 2, normal retry
+        logger.error(`Job ${id} (${localPath}) failed: ${errorMessage}`);
+        scheduleRetry(id, localPath, nRetries, errorCategory, dryRun);
       }
     } else {
       logger.error(`Job ${id} (${localPath}) failed: ${errorMessage}`);

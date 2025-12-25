@@ -109,6 +109,7 @@ export interface CreateProtonDriveClient extends BaseProtonDriveClient {
  * Proton Drive client interface for delete operations
  */
 export interface DeleteProtonDriveClient extends BaseProtonDriveClient {
+  trashNodes(nodeUids: string[]): AsyncIterable<DeleteResult>;
   deleteNodes(nodeUids: string[]): AsyncIterable<DeleteResult>;
 }
 

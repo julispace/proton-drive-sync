@@ -1,10 +1,10 @@
 /**
  * Proton Drive - Delete File or Directory
  *
- * Deletes a file or directory from Proton Drive.
+ * Deletes a file or directory from Proton Drive permanently.
  * - Pass a path (e.g., my_files/foo/bar.txt) and the corresponding remote item is deleted.
  * - If the remote item doesn't exist, does nothing (noop).
- * - By default, moves to trash. Use permanent=true to delete permanently.
+ * - Uses two-step process: trash first, then permanently delete.
  *
  * Path handling:
  * - If the path starts with my_files/, that prefix is stripped.
@@ -67,8 +67,28 @@ export async function deleteNode(
     return { success: true, existed: false };
   }
 
-  // Delete the node
+  // Delete the node (two-step: trash first, then permanently delete)
   try {
+    // Step 1: Move to trash (gracefully handle if already trashed)
+    try {
+      for await (const result of client.trashNodes([targetNode.uid])) {
+        if (!result.ok) {
+          const errorStr = String(result.error).toLowerCase();
+          // Continue if already trashed
+          if (!errorStr.includes('already') && !errorStr.includes('trashed')) {
+            throw new Error(`Failed to trash: ${result.error}`);
+          }
+        }
+      }
+    } catch (trashError) {
+      const errorStr = String(trashError).toLowerCase();
+      // If already trashed, continue to deletion step
+      if (!errorStr.includes('already') && !errorStr.includes('trashed')) {
+        throw trashError;
+      }
+    }
+
+    // Step 2: Permanently delete from trash
     for await (const result of client.deleteNodes([targetNode.uid])) {
       if (!result.ok) {
         throw new Error(`Failed to delete: ${result.error}`);
