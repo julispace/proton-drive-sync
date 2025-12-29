@@ -106,6 +106,7 @@ interface AddressKeyData {
 
 interface ApiError extends Error {
   code?: number;
+  status?: number;
   response?: ApiResponse;
   requires2FA?: boolean;
   twoFAInfo?: TwoFAInfo;
@@ -622,6 +623,7 @@ async function apiRequest<T extends ApiResponse>(
     const error = new Error(json.Error || `API error: ${response.status}`) as ApiError;
     error.code = json.Code;
     error.response = json;
+    error.status = response.status;
     throw error;
   }
 
@@ -655,6 +657,33 @@ async function apiRequest<T extends ApiResponse>(
 export class ProtonAuth {
   private session: Session | null = null;
   private pendingAuthResponse: AuthResponse | null = null;
+
+  /**
+   * Make an API request with automatic token refresh on 401
+   */
+  private async apiRequestWithRefresh<T extends ApiResponse>(
+    method: string,
+    endpoint: string,
+    data: Record<string, unknown> | null = null
+  ): Promise<T> {
+    if (!this.session) {
+      throw new Error('No session available');
+    }
+
+    try {
+      return await apiRequest<T>(method, endpoint, data, this.session);
+    } catch (error) {
+      const apiError = error as ApiError;
+      // Handle expired access token (401) - try to refresh and retry
+      if (apiError.status === 401 && this.session?.RefreshToken) {
+        console.log('[AUTH] Access token expired, attempting refresh...');
+        await this.refreshToken();
+        // Retry with new token
+        return await apiRequest<T>(method, endpoint, data, this.session);
+      }
+      throw error;
+    }
+  }
 
   /**
    * Authenticate with username and password
@@ -912,13 +941,12 @@ export class ProtonAuth {
       keyPassword: SaltedKeyPass,
     };
 
+    // Helper to refresh token when needed
     // Verify the session is still valid by fetching user info
     try {
-      const userResponse = await apiRequest<ApiResponse & { User: User }>(
+      const userResponse = await this.apiRequestWithRefresh<ApiResponse & { User: User }>(
         'GET',
-        'core/v4/users',
-        null,
-        this.session
+        'core/v4/users'
       );
       this.session.user = userResponse.User;
 
@@ -940,12 +968,9 @@ export class ProtonAuth {
       }
 
       // Fetch addresses
-      const addressesResponse = await apiRequest<ApiResponse & { Addresses?: Address[] }>(
-        'GET',
-        'core/v4/addresses',
-        null,
-        this.session
-      );
+      const addressesResponse = await this.apiRequestWithRefresh<
+        ApiResponse & { Addresses?: Address[] }
+      >('GET', 'core/v4/addresses');
       const addresses = addressesResponse.Addresses || [];
 
       // Process addresses and their keys
@@ -1114,7 +1139,10 @@ interface SRPModuleInterface {
 /**
  * Create an HTTP client for the Proton Drive SDK
  */
-export function createProtonHttpClient(session: Session): ProtonHttpClient {
+export function createProtonHttpClient(
+  session: Session,
+  onTokenRefresh?: () => Promise<void>
+): ProtonHttpClient {
   // Helper to build the full URL - handles both relative and absolute URLs
   const buildUrl = (url: string): string => {
     // If URL is already absolute, use it as-is
@@ -1125,30 +1153,53 @@ export function createProtonHttpClient(session: Session): ProtonHttpClient {
     return `${API_BASE_URL}/${url}`;
   };
 
+  // Helper to update auth headers with current session tokens
+  const setAuthHeaders = (headers: Headers) => {
+    if (session.UID) {
+      headers.set('x-pm-uid', session.UID);
+    }
+    if (session.AccessToken) {
+      headers.set('Authorization', `Bearer ${session.AccessToken}`);
+    }
+    headers.set('x-pm-appversion', APP_VERSION);
+  };
+
   return {
     async fetchJson(request: HttpClientRequest): Promise<Response> {
       const { url, method, headers, json, timeoutMs, signal } = request;
 
       // Add auth headers
-      if (session.UID) {
-        headers.set('x-pm-uid', session.UID);
-      }
-      if (session.AccessToken) {
-        headers.set('Authorization', `Bearer ${session.AccessToken}`);
-      }
-      headers.set('x-pm-appversion', APP_VERSION);
+      setAuthHeaders(headers);
 
       const fullUrl = buildUrl(url);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const response = await fetch(fullUrl, {
+        let response = await fetch(fullUrl, {
           method,
           headers,
           body: json ? JSON.stringify(json) : undefined,
           signal: signal || controller.signal,
         });
+
+        // Handle expired access token (401) - try to refresh and retry
+        if (response.status === 401 && session.RefreshToken && onTokenRefresh) {
+          try {
+            await onTokenRefresh();
+            // Update headers with new token and retry
+            setAuthHeaders(headers);
+            response = await fetch(fullUrl, {
+              method,
+              headers,
+              body: json ? JSON.stringify(json) : undefined,
+              signal: signal || controller.signal,
+            });
+          } catch {
+            // Refresh failed, return original 401 response
+          }
+        }
+
         return response;
       } finally {
         clearTimeout(timeout);
@@ -1159,25 +1210,37 @@ export function createProtonHttpClient(session: Session): ProtonHttpClient {
       const { url, method, headers, body, timeoutMs, signal } = request;
 
       // Add auth headers
-      if (session.UID) {
-        headers.set('x-pm-uid', session.UID);
-      }
-      if (session.AccessToken) {
-        headers.set('Authorization', `Bearer ${session.AccessToken}`);
-      }
-      headers.set('x-pm-appversion', APP_VERSION);
+      setAuthHeaders(headers);
 
       const fullUrl = buildUrl(url);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const response = await fetch(fullUrl, {
+        let response = await fetch(fullUrl, {
           method,
           headers,
           body,
           signal: signal || controller.signal,
         });
+
+        // Handle expired access token (401) - try to refresh and retry
+        if (response.status === 401 && session.RefreshToken && onTokenRefresh) {
+          try {
+            await onTokenRefresh();
+            // Update headers with new token and retry
+            setAuthHeaders(headers);
+            response = await fetch(fullUrl, {
+              method,
+              headers,
+              body,
+              signal: signal || controller.signal,
+            });
+          } catch {
+            // Refresh failed, return original 401 response
+          }
+        }
+
         return response;
       } finally {
         clearTimeout(timeout);
