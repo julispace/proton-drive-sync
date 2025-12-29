@@ -51,6 +51,7 @@ import { ControlsPauseButton } from './views/fragments/ControlsPauseButton.js';
 import { AddDirectoryModal } from './views/fragments/AddDirectoryModal.js';
 import { NoSyncDirsModal } from './views/fragments/NoSyncDirsModal.js';
 import { StartOnLoginSection } from './views/fragments/StartOnLoginSection.js';
+import { WelcomeModal } from './views/fragments/WelcomeModal.js';
 
 // Embed HTML templates at compile time as text (required for compiled binaries)
 import layoutHtml from './layout.html.txt';
@@ -709,6 +710,11 @@ app.get('/controls', async (c) => {
   // Replace button text/icons based on onboarding state
   content = content.replace('{{HIDE_NEXT_BUTTON}}', isOnboarding ? '' : 'hidden');
 
+  // Add welcome modal during onboarding
+  if (isOnboarding) {
+    content += WelcomeModal({})!.toString();
+  }
+
   const html = await composePage(layout, content, {
     title: 'Controls - Proton Drive Sync',
     activeTab: 'controls',
@@ -787,6 +793,11 @@ app.get('/api/modal/add-directory', (c) => {
 app.get('/api/modal/no-sync-dirs', (c) => {
   const redirectUrl = c.req.query('redirect') || '';
   return c.html(NoSyncDirsModal({ redirectUrl })!.toString());
+});
+
+// Serve welcome modal (shown during onboarding)
+app.get('/api/modal/welcome', (c) => {
+  return c.html(WelcomeModal({})!.toString());
 });
 
 /** Set onboarded flag */
