@@ -8,27 +8,30 @@ Automatically syncs selected local folders to Proton Drive in the background, wi
 
 ## Getting Started
 
-### Quick Start
-
-#### macOS / Linux
+### Install: macOS / Linux
 
 ```bash
 bash <(curl -fsSL https://www.damianb.dev/proton-drive-sync/install.sh)
 ```
 
-#### Windows
+<details>
+<summary>Install: Windows</summary>
+
+Run the following command in PowerShell:
 
 ```powershell
 irm https://www.damianb.dev/proton-drive-sync/install.ps1 | iex
 ```
 
-### Requirements
+</details>
 
-| Platform    | Requirements                                                |
-| ----------- | ----------------------------------------------------------- |
-| **macOS**   | [Homebrew](https://brew.sh) (for Watchman)                  |
-| **Linux**   | None                                                        |
-| **Windows** | [Chocolatey](https://chocolatey.org/install) (for Watchman) |
+### Platform Support
+
+| Platform            | Requirements                                                |
+| ------------------- | ----------------------------------------------------------- |
+| **macOS**           | [Homebrew](https://brew.sh) (for Watchman)                  |
+| **Linux** (beta)    | None                                                        |
+| **Windows** (alpha) | [Chocolatey](https://chocolatey.org/install) (for Watchman) |
 
 ### Dashboard
 
@@ -44,19 +47,22 @@ The dashboard runs locally at http://localhost:4242. Use it to configure and man
 
 4. For more advanced commands, see: `proton-drive-sync --help`
 
-### Uninstall
-
-#### macOS / Linux
+### Uninstall: macOS / Linux
 
 ```bash
 bash <(curl -fsSL https://www.damianb.dev/proton-drive-sync/uninstall.sh)
 ```
 
-#### Windows
+<details>
+<summary>Uninstall: Windows</summary>
+
+Run the following command in PowerShell:
 
 ```powershell
 irm https://www.damianb.dev/proton-drive-sync/uninstall.ps1 | iex
 ```
+
+</details>
 
 ## Development
 
