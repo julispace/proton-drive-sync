@@ -10,6 +10,17 @@ import { db, schema, run } from '../db/index.js';
 import { SyncJobStatus, SyncEventType } from '../db/schema.js';
 import { logger, isDebugEnabled } from '../logger.js';
 import { isPathWatched } from '../config.js';
+import {
+  RETRY_DELAYS_SEC,
+  JITTER_FACTOR,
+  STALE_PROCESSING_MS,
+  NETWORK_RETRY_CAP_INDEX,
+  REUPLOAD_NEEDED_RETRY_SEC,
+  REUPLOAD_DELETE_RECREATE_THRESHOLD,
+  ErrorCategory,
+  MAX_RETRIES,
+  type ErrorClassification,
+} from './constants.js';
 
 // ============================================================================
 // Event Emitter for Dashboard
@@ -44,50 +55,8 @@ export interface Job {
   createdAt: Date;
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-// Retry delays in seconds (x4 exponential backoff, capped at ~1 week)
-const RETRY_DELAYS_SEC = [
-  1,
-  4,
-  16,
-  64,
-  256, // ~4 minutes
-  1024, // ~17 minutes
-  4096, // ~1 hour
-  16384, // ~4.5 hours
-  65536, // ~18 hours
-  262144, // ~3 days
-  604800, // ~1 week (cap)
-];
-
-const JITTER_FACTOR = 0.25;
-const STALE_PROCESSING_MS = 2 * 60 * 1000;
-const NETWORK_RETRY_CAP_INDEX = 4;
-const REUPLOAD_NEEDED_RETRY_SEC = 256;
-
-export const ErrorCategory = {
-  NETWORK: 'network',
-  REUPLOAD_NEEDED: 'reupload_needed',
-  OTHER: 'other',
-} as const;
-export type ErrorCategory = (typeof ErrorCategory)[keyof typeof ErrorCategory];
-
-export interface ErrorClassification {
-  category: ErrorCategory;
-  maxRetries: number;
-}
-
-const MAX_RETRIES: Record<ErrorCategory, number> = {
-  [ErrorCategory.OTHER]: RETRY_DELAYS_SEC.length,
-  [ErrorCategory.REUPLOAD_NEEDED]: 4,
-  [ErrorCategory.NETWORK]: Infinity,
-};
-
-/** Number of retries before attempting delete+recreate for REUPLOAD_NEEDED errors */
-export const REUPLOAD_DELETE_RECREATE_THRESHOLD = 2;
+// Re-export for backward compatibility
+export { ErrorCategory, REUPLOAD_DELETE_RECREATE_THRESHOLD, type ErrorClassification };
 
 // ============================================================================
 // Dry-Run State (module-level, only used when dryRun=true)

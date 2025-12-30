@@ -1,0 +1,79 @@
+/**
+ * Sync Module Constants
+ *
+ * Centralized constants for the sync engine, queue, processor, and watcher.
+ */
+
+// ============================================================================
+// Timing Constants
+// ============================================================================
+
+/** Polling interval for processing jobs in watch mode (2 seconds) */
+export const JOB_POLL_INTERVAL_MS = 2_000;
+
+/** Timeout for graceful shutdown (2 seconds) */
+export const SHUTDOWN_TIMEOUT_MS = 2_000;
+
+/** Time after which a PROCESSING job is considered stale (10 minutes) */
+export const STALE_PROCESSING_MS = 10 * 60 * 1000;
+
+// ============================================================================
+// Retry Configuration
+// ============================================================================
+
+/** Retry delays in seconds (x4 exponential backoff, capped at ~1 week) */
+export const RETRY_DELAYS_SEC = [
+  1,
+  4,
+  16,
+  64,
+  256, // ~4 minutes
+  1024, // ~17 minutes
+  4096, // ~1 hour
+  16384, // ~4.5 hours
+  65536, // ~18 hours
+  262144, // ~3 days
+  604800, // ~1 week (cap)
+];
+
+/** Jitter factor for retry timing (±25%) */
+export const JITTER_FACTOR = 0.25;
+
+/** Cap index for network error retries (limits backoff growth) */
+export const NETWORK_RETRY_CAP_INDEX = 4;
+
+/** Fixed retry delay for REUPLOAD_NEEDED errors (256 seconds) */
+export const REUPLOAD_NEEDED_RETRY_SEC = 256;
+
+/** Number of retries before attempting delete+recreate for REUPLOAD_NEEDED errors */
+export const REUPLOAD_DELETE_RECREATE_THRESHOLD = 2;
+
+// ============================================================================
+// Error Categories
+// ============================================================================
+
+export const ErrorCategory = {
+  NETWORK: 'network',
+  REUPLOAD_NEEDED: 'reupload_needed',
+  OTHER: 'other',
+} as const;
+export type ErrorCategory = (typeof ErrorCategory)[keyof typeof ErrorCategory];
+
+export interface ErrorClassification {
+  category: ErrorCategory;
+  maxRetries: number;
+}
+
+/** Maximum retries per error category */
+export const MAX_RETRIES: Record<ErrorCategory, number> = {
+  [ErrorCategory.OTHER]: RETRY_DELAYS_SEC.length,
+  [ErrorCategory.REUPLOAD_NEEDED]: 4,
+  [ErrorCategory.NETWORK]: Infinity,
+};
+
+// ============================================================================
+// Watchman
+// ============================================================================
+
+/** Watchman subscription name prefix */
+export const WATCHMAN_SUB_NAME = 'proton-drive-sync';

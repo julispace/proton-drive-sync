@@ -28,17 +28,7 @@ import {
   drainQueue,
   setSyncConcurrency,
 } from './processor.js';
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-// Polling interval for processing jobs in watch mode (2 seconds)
-// Also serves as the dashboard heartbeat interval
-const JOB_POLL_INTERVAL_MS = 2_000;
-
-// Timeout for graceful shutdown (2 seconds)
-const SHUTDOWN_TIMEOUT_MS = 2_000;
+import { JOB_POLL_INTERVAL_MS, SHUTDOWN_TIMEOUT_MS } from './constants.js';
 
 // ============================================================================
 // Types

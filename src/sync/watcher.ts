@@ -12,6 +12,7 @@ import { logger } from '../logger.js';
 import { setFlag, clearFlag, getFlagData, FLAGS, WATCHMAN_STATE, ALL_VARIANTS } from '../flags.js';
 import { sendSignal } from '../signals.js';
 import type { Config } from '../config.js';
+import { WATCHMAN_SUB_NAME } from './constants.js';
 
 // ============================================================================
 // Types
@@ -35,10 +36,8 @@ interface WatchmanQueryResponse {
 export type FileChangeHandler = (file: FileChange) => void;
 
 // ============================================================================
-// Constants
+// State
 // ============================================================================
-
-const SUB_NAME = 'proton-drive-sync';
 
 /** Track active subscription names for teardown */
 let activeSubscriptions: { root: string; subName: string }[] = [];
@@ -248,7 +247,7 @@ export async function setupWatchSubscriptions(
   await Promise.all(
     config.sync_dirs.map(async (dir) => {
       const watchDir = realpathSync(dir.source_path);
-      const subName = `${SUB_NAME}-${basename(watchDir)}`;
+      const subName = `${WATCHMAN_SUB_NAME}-${basename(watchDir)}`;
 
       // Register directory with Watchman
       const watchResp = await registerWithWatchman(watchDir);
@@ -276,12 +275,12 @@ export async function setupWatchSubscriptions(
   // Listen for notifications from all subscriptions
   watchmanClient.on('subscription', (resp: watchman.SubscriptionResponse) => {
     // Check if this is one of our subscriptions
-    if (!resp.subscription.startsWith(SUB_NAME)) return;
+    if (!resp.subscription.startsWith(WATCHMAN_SUB_NAME)) return;
 
     logger.debug(`Watchman event: ${resp.subscription} (${resp.files.length} files)`);
 
     // Extract the watch root from the subscription name
-    const dirName = resp.subscription.replace(`${SUB_NAME}-`, '');
+    const dirName = resp.subscription.replace(`${WATCHMAN_SUB_NAME}-`, '');
     const syncDir = config.sync_dirs.find((d) => basename(realpathSync(d.source_path)) === dirName);
 
     if (!syncDir) {

@@ -32,12 +32,13 @@ export {
   getRecentJobs,
   getBlockedJobs,
   getProcessingJobs,
-  ErrorCategory,
   type Job,
   type JobEvent,
   type JobEventType,
-  type ErrorClassification,
 } from './queue.js';
+
+// Constants (error types, thresholds)
+export { ErrorCategory, type ErrorClassification } from './constants.js';
 
 // Processor (job execution)
 export {

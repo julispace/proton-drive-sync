@@ -18,8 +18,8 @@ import {
   categorizeError,
   scheduleRetry,
   ErrorCategory,
-  REUPLOAD_DELETE_RECREATE_THRESHOLD,
 } from './queue.js';
+import { REUPLOAD_DELETE_RECREATE_THRESHOLD } from './constants.js';
 
 // ============================================================================
 // Task Pool State (persistent across iterations)
