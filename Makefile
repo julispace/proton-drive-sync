@@ -49,7 +49,9 @@ clean:
 	rm -rf dist
 
 # Open Drizzle Studio to inspect the database
+# Checkpoint WAL first to ensure all writes are visible
 db-inspect:
+	@sqlite3 ~/.local/state/proton-drive-sync/state.db "PRAGMA wal_checkpoint(TRUNCATE);" 2>/dev/null || true
 	bun drizzle-kit studio
 
 # Show available commands

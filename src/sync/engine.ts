@@ -11,6 +11,7 @@ import { registerSignalHandler } from '../signals.js';
 import { isPaused } from '../flags.js';
 import { sendStatusToDashboard } from '../dashboard/server.js';
 import { getConfig, onConfigChange } from '../config.js';
+import { cleanupOrphanedClocks } from '../state.js';
 import type { Config } from '../config.js';
 import type { ProtonDriveClient } from '../proton/types.js';
 import {
@@ -135,8 +136,9 @@ export async function runWatchMode(options: SyncOptions): Promise<void> {
   // Helper to create file change handler with current config
   const createFileHandler = () => (file: FileChange) => handleFileChange(file, getConfig(), dryRun);
 
-  // Clean up stale/orphaned jobs from previous run
+  // Clean up stale/orphaned jobs and clocks from previous run
   cleanupOrphanedJobs(dryRun);
+  cleanupOrphanedClocks(dryRun);
 
   // Set up file watching
   await setupWatchSubscriptions(config, createFileHandler(), dryRun);
@@ -150,6 +152,7 @@ export async function runWatchMode(options: SyncOptions): Promise<void> {
     logger.info('sync_dirs changed, reinitializing watch subscriptions...');
     const newConfig = getConfig();
     cleanupOrphanedJobs(dryRun);
+    cleanupOrphanedClocks(dryRun);
     await setupWatchSubscriptions(newConfig, createFileHandler(), dryRun);
   });
 

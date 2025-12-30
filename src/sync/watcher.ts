@@ -11,7 +11,7 @@ import { getClock, setClock } from '../state.js';
 import { logger } from '../logger.js';
 import { setFlag, clearFlag, getFlagData, FLAGS, WATCHMAN_STATE, ALL_VARIANTS } from '../flags.js';
 import { sendSignal } from '../signals.js';
-import type { Config } from '../config.js';
+import { getConfig, type Config } from '../config.js';
 import { WATCHMAN_SUB_NAME } from './constants.js';
 
 // ============================================================================
@@ -243,6 +243,44 @@ export async function setupWatchSubscriptions(
   // Clear any existing subscriptions first
   await teardownWatchSubscriptions();
 
+  // Register event listener BEFORE creating subscriptions to avoid missing events
+  watchmanClient.on('subscription', (resp: watchman.SubscriptionResponse) => {
+    // Check if this is one of our subscriptions
+    if (!resp.subscription.startsWith(WATCHMAN_SUB_NAME)) return;
+
+    // Use Watchman's root directly instead of parsing from subscription name
+    const watchRoot = (resp as unknown as { root: string }).root;
+
+    // Use getConfig() to get fresh config instead of stale closure
+    const currentConfig = getConfig();
+    const syncDir = currentConfig.sync_dirs.find((d) => realpathSync(d.source_path) === watchRoot);
+
+    if (!syncDir) {
+      // This can happen legitimately during config transitions or stale events
+      logger.warn(
+        `Ignoring event for unknown watch root: ${watchRoot} (subscription: ${resp.subscription})`
+      );
+      return;
+    }
+
+    const resolvedRoot = watchRoot;
+
+    for (const file of resp.files) {
+      const fileChange = file as unknown as Omit<FileChange, 'watchRoot'>;
+      onFileChange({ ...fileChange, watchRoot: resolvedRoot });
+    }
+
+    // Save the new clock so we don't see these events again on restart
+    const clock = (resp as unknown as { clock?: string }).clock;
+    if (clock) {
+      setClock(resolvedRoot, clock, dryRun);
+    }
+  });
+
+  // Handle errors
+  watchmanClient.on('error', (e: Error) => logger.error(`Watchman error: ${e}`));
+  watchmanClient.on('end', () => {});
+
   // Set up watches for all configured directories
   await Promise.all(
     config.sync_dirs.map(async (dir) => {
@@ -271,43 +309,6 @@ export async function setupWatchSubscriptions(
       logger.info(`Watching ${dir.source_path} for changes...`);
     })
   );
-
-  // Listen for notifications from all subscriptions
-  watchmanClient.on('subscription', (resp: watchman.SubscriptionResponse) => {
-    // Check if this is one of our subscriptions
-    if (!resp.subscription.startsWith(WATCHMAN_SUB_NAME)) return;
-
-    logger.debug(`Watchman event: ${resp.subscription} (${resp.files.length} files)`);
-
-    // Extract the watch root from the subscription name
-    const dirName = resp.subscription.replace(`${WATCHMAN_SUB_NAME}-`, '');
-    const syncDir = config.sync_dirs.find((d) => basename(realpathSync(d.source_path)) === dirName);
-
-    if (!syncDir) {
-      logger.error(`Could not find watch root for subscription: ${resp.subscription}`);
-      return;
-    }
-
-    const resolvedRoot = realpathSync(syncDir.source_path);
-
-    for (const file of resp.files) {
-      const fileChange = file as unknown as Omit<FileChange, 'watchRoot'>;
-      logger.debug(
-        `  File: ${fileChange.name} (exists: ${fileChange.exists}, type: ${fileChange.type}, new: ${fileChange.new})`
-      );
-      onFileChange({ ...fileChange, watchRoot: resolvedRoot });
-    }
-
-    // Save the new clock so we don't see these events again on restart
-    const clock = (resp as unknown as { clock?: string }).clock;
-    if (clock) {
-      setClock(resolvedRoot, clock, dryRun);
-    }
-  });
-
-  // Handle errors
-  watchmanClient.on('error', (e: Error) => logger.error(`Watchman error: ${e}`));
-  watchmanClient.on('end', () => {});
 
   logger.info('Watching for file changes... (press Ctrl+C to exit)');
 }

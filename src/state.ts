@@ -4,8 +4,10 @@
  * Persists sync state to ~/.local/state/proton-drive-sync/state.db using SQLite.
  */
 
+import { realpathSync } from 'node:fs';
 import { eq } from 'drizzle-orm';
 import { db, schema, STATE_DIR } from './db/index.js';
+import { getConfig } from './config.js';
 import { logger } from './logger.js';
 
 // Re-export STATE_DIR for other modules
@@ -47,4 +49,30 @@ export function setClock(directory: string, clock: string, dryRun: boolean): voi
 export function getAllClocks(): Record<string, string> {
   const rows = db.select().from(schema.clocks).all();
   return Object.fromEntries(rows.map((row) => [row.directory, row.clock]));
+}
+
+/**
+ * Delete the watchman clock for a directory.
+ * No-op if dryRun is true.
+ */
+export function deleteClock(directory: string, dryRun: boolean): void {
+  if (dryRun) return;
+  logger.debug(`Deleting clock for ${directory}`);
+  db.delete(schema.clocks).where(eq(schema.clocks.directory, directory)).run();
+}
+
+/**
+ * Remove clock entries for directories no longer in sync_dirs config.
+ */
+export function cleanupOrphanedClocks(dryRun: boolean): void {
+  const config = getConfig();
+  const validDirs = new Set(config.sync_dirs.map((d) => realpathSync(d.source_path)));
+
+  const allClocks = getAllClocks();
+  for (const directory of Object.keys(allClocks)) {
+    if (!validDirs.has(directory)) {
+      logger.info(`Removing orphaned clock for: ${directory}`);
+      deleteClock(directory, dryRun);
+    }
+  }
 }
