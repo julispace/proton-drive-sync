@@ -34,7 +34,7 @@ import {
 } from '../flags.js';
 import { sendSignal } from '../signals.js';
 import { logger, enableIpcLogging } from '../logger.js';
-import { CONFIG_FILE, CONFIG_CHECK_SIGNAL } from '../config.js';
+import { CONFIG_FILE, CONFIG_CHECK_SIGNAL, DEFAULT_SYNC_CONCURRENCY } from '../config.js';
 import {
   type AuthStatusUpdate,
   type DashboardJob,
@@ -710,7 +710,7 @@ app.get('/controls', async (c) => {
   );
 
   // Server-side render sync concurrency and directories
-  const syncConcurrency = currentConfig?.sync_concurrency ?? 8;
+  const syncConcurrency = currentConfig?.sync_concurrency ?? DEFAULT_SYNC_CONCURRENCY;
   const syncDirs = currentConfig?.sync_dirs ?? [];
   const syncDirsHtml = syncDirs.length > 0 ? renderSyncDirsHtml(syncDirs) : '';
   const showNoDirsMessage = syncDirs.length === 0;

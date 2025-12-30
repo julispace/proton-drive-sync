@@ -39,7 +39,7 @@ export const CONFIG_RELOAD_SIGNAL = 'config:reload';
 export const CONFIG_CHECK_SIGNAL = 'config:check';
 
 /** Default sync concurrency */
-export const DEFAULT_SYNC_CONCURRENCY = 8;
+export const DEFAULT_SYNC_CONCURRENCY = 4;
 
 if (!xdgConfig) {
   logger.error('Could not determine XDG config directory');

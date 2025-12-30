@@ -45,7 +45,7 @@
             type="range"
             id="sync-concurrency"
             min="1"
-            max="64"
+            max="16"
             value="{{SYNC_CONCURRENCY}}"
             class="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-proton"
             oninput="document.getElementById('concurrency-value').textContent = this.value"
