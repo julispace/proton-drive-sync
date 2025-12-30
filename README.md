@@ -3,7 +3,9 @@
 Automatically syncs selected local folders to Proton Drive in the background, with a dashboard for monitoring.
 
 <p align="center">
-  <video src="readme_assets/proton_drive_sync_demo.mp4" width="600" controls></video>
+
+https://github.com/DamianB-BitFlipper/proton-drive-sync/raw/main/readme_assets/proton_drive_sync_demo.mp4
+
 </p>
 
 ## Getting Started
