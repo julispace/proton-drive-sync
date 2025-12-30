@@ -50,8 +50,8 @@ export function logsCommand(options: LogsOptions): void {
       return;
     }
 
-    // Print the logs
-    logger.info(content);
+    // Write directly to stdout to avoid double-encoding through the JSON logger
+    process.stdout.write(content);
   }
 }
 

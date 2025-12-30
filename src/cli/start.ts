@@ -108,8 +108,8 @@ function spawnDaemon(options: StartOptions): void {
   if (options.debug) args.push('--debug', String(options.debug));
   if (options.paused) args.push('--paused');
 
-  // Use the binary name - PATH resolution will find it
-  const child = Bun.spawn(['proton-drive-sync', ...args], {
+  // Use the full executable path to avoid PATH resolution issues (e.g., in launchd environment)
+  const child = Bun.spawn([process.execPath, ...args], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
     env: { ...process.env },
