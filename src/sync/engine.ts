@@ -35,12 +35,14 @@ import {
   getStoredHash,
   deleteStoredHash,
   deleteStoredHashesUnderPath,
+  updateStoredHashesUnderPath,
   cleanupOrphanedHashes,
 } from './hashes.js';
 import {
   getNodeMapping,
   deleteNodeMapping,
   deleteNodeMappingsUnderPath,
+  updateNodeMappingsUnderPath,
   cleanupOrphanedNodeMappings,
 } from './nodes.js';
 import { JOB_POLL_INTERVAL_MS, SHUTDOWN_TIMEOUT_MS } from './constants.js';
@@ -127,8 +129,29 @@ function handleFileChangeBatch(files: FileChange[], config: Config, dryRun: bool
     }
   }
 
+  // Identify directory renames in this batch
+  const directoryRenames = renames.filter(({ from }) => from.type === 'd');
+
+  // Filter out children whose parent directory is also being renamed in the same batch.
+  // When a directory is renamed, Proton Drive moves all children implicitly, so we don't
+  // need separate MOVE jobs for them - they would fail with "item already exists".
+  const filteredRenames = renames.filter(({ from }) => {
+    // Always keep directory renames
+    if (from.type === 'd') return true;
+
+    // Check if this file's old path is under any directory being renamed
+    for (const { from: dirFrom } of directoryRenames) {
+      const oldDirPath = dirFrom.localPath;
+      if (from.localPath.startsWith(oldDirPath + '/')) {
+        logger.debug(`[skip] child of renamed directory: ${from.name}`);
+        return false;
+      }
+    }
+    return true;
+  });
+
   // Process renames/moves (one transaction per event)
-  for (const { from, to } of renames) {
+  for (const { from, to } of filteredRenames) {
     db.transaction((tx) => {
       const isFile = from.type !== 'd';
       const isSameParent = dirname(from.localPath) === dirname(to.localPath);
@@ -181,6 +204,13 @@ function handleFileChangeBatch(files: FileChange[], config: Config, dryRun: bool
         dryRun,
         tx
       );
+
+      // For directory renames, update all child mappings/hashes to their new paths.
+      // The children were filtered out above, so we need to update their paths here.
+      if (!isFile) {
+        updateNodeMappingsUnderPath(from.localPath, to.localPath, dryRun, tx);
+        updateStoredHashesUnderPath(from.localPath, to.localPath, dryRun, tx);
+      }
     });
   }
 
@@ -426,7 +456,9 @@ function startJobProcessorLoop(client: ProtonDriveClient, dryRun: boolean): Proc
   let loopCount = 0;
   const processLoop = (): void => {
     loopCount++;
-    if (loopCount % 10 === 0) {
+
+    // Debug log occasionally to ensure the loop is alive
+    if (loopCount % 25 === 0) {
       logger.debug('processLoop iteration');
     }
     if (!running) return;

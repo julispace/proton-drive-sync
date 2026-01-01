@@ -59,6 +59,33 @@ export function updateStoredHashPath(
 }
 
 /**
+ * Update all stored hashes under a directory when the directory is renamed.
+ * Replaces oldDirPath prefix with newDirPath for all children.
+ */
+export function updateStoredHashesUnderPath(
+  oldDirPath: string,
+  newDirPath: string,
+  dryRun: boolean,
+  tx: Tx
+): void {
+  if (dryRun) return;
+  const pathPrefix = oldDirPath.endsWith('/') ? oldDirPath : `${oldDirPath}/`;
+  const children = tx
+    .select()
+    .from(fileHashes)
+    .where(like(fileHashes.localPath, `${pathPrefix}%`))
+    .all();
+
+  for (const child of children) {
+    const newPath = newDirPath + child.localPath.slice(oldDirPath.length);
+    tx.update(fileHashes)
+      .set({ localPath: newPath, updatedAt: new Date() })
+      .where(eq(fileHashes.localPath, child.localPath))
+      .run();
+  }
+}
+
+/**
  * Remove hashes for paths no longer under any sync directory.
  */
 export function cleanupOrphanedHashes(tx: Tx): number {

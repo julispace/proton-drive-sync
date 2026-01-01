@@ -446,10 +446,11 @@ export function categorizeError(error: string): ErrorClassification {
     };
   }
 
-  // Proton API conflict errors - delete and recreate after max retries
+  // Proton API conflict/not-found errors - delete and recreate after max retries
   if (
     lowerError.includes('draft revision already exists') ||
-    lowerError.includes('a file or folder with that name already exists')
+    lowerError.includes('a file or folder with that name already exists') ||
+    lowerError.includes('file or folder not found') // remote node not found on Proton
   ) {
     return {
       category: ErrorCategory.REUPLOAD_NEEDED,

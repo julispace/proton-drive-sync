@@ -117,6 +117,33 @@ export function updateNodeMappingPath(
 }
 
 /**
+ * Update all node mappings under a directory when the directory is renamed.
+ * Replaces oldDirPath prefix with newDirPath for all children.
+ */
+export function updateNodeMappingsUnderPath(
+  oldDirPath: string,
+  newDirPath: string,
+  dryRun: boolean,
+  tx: Tx
+): void {
+  if (dryRun) return;
+  const pathPrefix = oldDirPath.endsWith('/') ? oldDirPath : `${oldDirPath}/`;
+  const children = tx
+    .select()
+    .from(nodeMapping)
+    .where(like(nodeMapping.localPath, `${pathPrefix}%`))
+    .all();
+
+  for (const child of children) {
+    const newPath = newDirPath + child.localPath.slice(oldDirPath.length);
+    tx.update(nodeMapping)
+      .set({ localPath: newPath, updatedAt: new Date() })
+      .where(eq(nodeMapping.localPath, child.localPath))
+      .run();
+  }
+}
+
+/**
  * Remove node mappings for paths no longer under any sync directory.
  */
 export function cleanupOrphanedNodeMappings(tx: Tx): number {

@@ -212,75 +212,6 @@ async function processJob(client: ProtonDriveClient, job: Job, dryRun: boolean):
         return;
       }
 
-      case SyncEventType.RENAME: {
-        if (!oldLocalPath || !oldRemotePath) {
-          throw new Error(
-            `RENAME event missing required paths: oldLocalPath=${oldLocalPath}, oldRemotePath=${oldRemotePath}`
-          );
-        }
-        logger.info(`Renaming: ${oldRemotePath} -> ${remotePath}`);
-        const mapping = getNodeMapping(oldLocalPath);
-        if (!mapping) {
-          throw new Error(`Node mapping not found for ${oldLocalPath}, cannot rename`);
-        }
-        const newName = path.basename(localPath);
-        const result = await relocateNode(client, mapping.nodeUid, { newName }, dryRun);
-        if (!result.success) {
-          throw new Error(result.error);
-        }
-        db.transaction((tx) => {
-          updateNodeMappingPath(oldLocalPath, localPath, undefined, dryRun, tx);
-          updateStoredHashPath(oldLocalPath, localPath, dryRun, tx);
-          markJobSynced(id, localPath, dryRun, tx);
-        });
-        logger.info(`Renamed: ${oldRemotePath} -> ${remotePath}`);
-        return;
-      }
-
-      case SyncEventType.MOVE: {
-        if (!oldLocalPath || !oldRemotePath) {
-          throw new Error(
-            `MOVE event missing required paths: oldLocalPath=${oldLocalPath}, oldRemotePath=${oldRemotePath}`
-          );
-        }
-        logger.info(`Moving: ${oldRemotePath} -> ${remotePath}`);
-        const mapping = getNodeMapping(oldLocalPath);
-        if (!mapping) {
-          throw new Error(`Node mapping not found for ${oldLocalPath}, cannot move`);
-        }
-
-        // Get the new parent's nodeUid
-        const newParentLocalPath = path.dirname(localPath);
-        const newParentNodeUid = await getParentFolderUid(client, newParentLocalPath, dryRun);
-        if (!newParentNodeUid) {
-          throw new Error(`Parent folder not found for ${newParentLocalPath}`);
-        }
-
-        const oldName = path.basename(oldLocalPath);
-        const newName = path.basename(localPath);
-        const nameChanged = oldName !== newName;
-
-        const result = await relocateNode(
-          client,
-          mapping.nodeUid,
-          {
-            newParentNodeUid,
-            newName: nameChanged ? newName : undefined,
-          },
-          dryRun
-        );
-        if (!result.success) {
-          throw new Error(result.error);
-        }
-        db.transaction((tx) => {
-          updateNodeMappingPath(oldLocalPath, localPath, newParentNodeUid, dryRun, tx);
-          updateStoredHashPath(oldLocalPath, localPath, dryRun, tx);
-          markJobSynced(id, localPath, dryRun, tx);
-        });
-        logger.info(`Moved: ${oldRemotePath} -> ${remotePath}`);
-        return;
-      }
-
       case SyncEventType.DELETE_AND_CREATE: {
         if (!oldLocalPath || !oldRemotePath) {
           throw new Error(
@@ -316,6 +247,75 @@ async function processJob(client: ProtonDriveClient, job: Job, dryRun: boolean):
         });
 
         logger.info(`Delete+Create complete: ${oldRemotePath} -> ${remotePath}`);
+        return;
+      }
+
+      case SyncEventType.RENAME: {
+        if (!oldLocalPath || !oldRemotePath) {
+          throw new Error(
+            `RENAME event missing required paths: oldLocalPath=${oldLocalPath}, oldRemotePath=${oldRemotePath}`
+          );
+        }
+        logger.info(`Renaming: ${oldRemotePath} -> ${remotePath}`);
+        const mapping = getNodeMapping(oldLocalPath);
+        if (!mapping) {
+          throw new Error(`Node mapping not found for ${oldLocalPath}, cannot rename`);
+        }
+        const newName = path.basename(localPath);
+        const result = await relocateNode(client, mapping.nodeUid, { newName }, dryRun);
+        if (!result.success) {
+          throw new Error(result.error);
+        }
+        db.transaction((tx) => {
+          updateNodeMappingPath(oldLocalPath, localPath, undefined, dryRun, tx);
+          updateStoredHashPath(oldLocalPath, localPath, dryRun, tx);
+          markJobSynced(id, localPath, dryRun, tx);
+        });
+        logger.info(`Renamed: ${oldRemotePath} -> ${remotePath}`);
+        return;
+      }
+
+      case SyncEventType.MOVE: {
+        if (!oldLocalPath || !oldRemotePath) {
+          throw new Error(
+            `MOVE event missing required paths: oldLocalPath=${oldLocalPath}, oldRemotePath=${oldRemotePath}`
+          );
+        }
+        logger.info(`Moving: ${oldRemotePath} -> ${remotePath}`);
+        const moveMapping = getNodeMapping(oldLocalPath);
+        if (!moveMapping) {
+          throw new Error(`Node mapping not found for ${oldLocalPath}, cannot move`);
+        }
+
+        // Get the new parent's nodeUid by passing the full remotePath
+        // getParentFolderUid resolves the parent directory of the given path
+        const newParentNodeUid = await getParentFolderUid(client, remotePath, dryRun);
+        if (!newParentNodeUid) {
+          throw new Error(`Parent folder not found for ${remotePath}`);
+        }
+
+        const oldName = path.basename(oldLocalPath);
+        const newName = path.basename(localPath);
+        const nameChanged = oldName !== newName;
+
+        const moveResult = await relocateNode(
+          client,
+          moveMapping.nodeUid,
+          {
+            newParentNodeUid,
+            newName: nameChanged ? newName : undefined,
+          },
+          dryRun
+        );
+        if (!moveResult.success) {
+          throw new Error(moveResult.error);
+        }
+        db.transaction((tx) => {
+          updateNodeMappingPath(oldLocalPath, localPath, newParentNodeUid, dryRun, tx);
+          updateStoredHashPath(oldLocalPath, localPath, dryRun, tx);
+          markJobSynced(id, localPath, dryRun, tx);
+        });
+        logger.info(`Moved: ${oldRemotePath} -> ${remotePath}`);
         return;
       }
 
