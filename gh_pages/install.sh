@@ -180,19 +180,25 @@ install_watchman_linux() {
 		exit 1
 	fi
 
-	echo -e "${MUTED}Installing Watchman to /usr/local...${NC}"
-	sudo mkdir -p /usr/local/bin /usr/local/lib /usr/local/var/run/watchman
-	sudo cp "$watchman_dir/bin/watchman" /usr/local/bin/
-	sudo cp -r "$watchman_dir/lib/"* /usr/local/lib/ 2>/dev/null || true
-	sudo chmod +x /usr/local/bin/watchman
-	sudo chmod 1777 /usr/local/var/run/watchman
+	# Install to /opt/watchman to keep libraries isolated from system
+	# This prevents conflicts with system libraries (e.g., liblzma) that can break dpkg/apt
+	echo -e "${MUTED}Installing Watchman to /opt/watchman...${NC}"
+	sudo rm -rf /opt/watchman
+	sudo mkdir -p /opt/watchman /usr/local/var/run/watchman
+	sudo cp -r "$watchman_dir"/* /opt/watchman/
+	sudo chmod 755 /opt/watchman/bin/watchman
+	sudo chmod 2777 /usr/local/var/run/watchman
+
+	# Create wrapper script in /usr/local/bin that sets LD_LIBRARY_PATH
+	# This ensures Watchman uses its bundled libraries without polluting system library path
+	sudo tee /usr/local/bin/watchman >/dev/null <<'WRAPPER'
+#!/bin/bash
+export LD_LIBRARY_PATH="/opt/watchman/lib:$LD_LIBRARY_PATH"
+exec /opt/watchman/bin/watchman "$@"
+WRAPPER
+	sudo chmod 755 /usr/local/bin/watchman
 
 	rm -rf "$tmp_dir"
-
-	# Update library cache on Linux
-	if command -v ldconfig >/dev/null 2>&1; then
-		sudo ldconfig 2>/dev/null || true
-	fi
 
 	echo -e "${MUTED}Watchman installed successfully${NC}"
 }
