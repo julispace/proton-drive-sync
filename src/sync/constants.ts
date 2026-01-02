@@ -56,6 +56,7 @@ export const ErrorCategory = {
   NETWORK: 'network',
   REUPLOAD_NEEDED: 'reupload_needed',
   LOCAL_NOT_FOUND: 'local_not_found',
+  AUTH: 'auth', // Authentication failures - no retry, requires re-auth
   OTHER: 'other',
 } as const;
 export type ErrorCategory = (typeof ErrorCategory)[keyof typeof ErrorCategory];
@@ -71,6 +72,7 @@ export const MAX_RETRIES: Record<ErrorCategory, number> = {
   [ErrorCategory.REUPLOAD_NEEDED]: 4,
   [ErrorCategory.LOCAL_NOT_FOUND]: 3,
   [ErrorCategory.NETWORK]: Infinity,
+  [ErrorCategory.AUTH]: 0, // No retries - requires user re-authentication
 };
 
 // ============================================================================

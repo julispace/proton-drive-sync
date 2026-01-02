@@ -12,12 +12,21 @@ import { logger } from './logger.js';
 const KEYCHAIN_SERVICE = 'proton-drive-sync';
 const KEYCHAIN_ACCOUNT = 'proton-drive-sync:tokens';
 
-/** Tokens stored in keychain for session reuse */
+/** Tokens stored in keychain for session reuse (parent/child session model) */
 export interface StoredCredentials {
-  UID: string;
-  AccessToken: string;
-  RefreshToken: string;
-  SaltedKeyPass?: string;
+  // Parent session (from initial login, used to fork new child sessions)
+  parentUID: string;
+  parentAccessToken: string;
+  parentRefreshToken: string;
+
+  // Child session (used for API operations, can be refreshed via forking)
+  childUID: string;
+  childAccessToken: string;
+  childRefreshToken: string;
+
+  // Shared credentials
+  SaltedKeyPass: string;
+  UserID: string;
   username: string;
 }
 

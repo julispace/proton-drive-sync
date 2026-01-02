@@ -433,6 +433,19 @@ export function setJobError(jobId: number, error: string, dryRun: boolean, tx: T
 export function categorizeError(error: string): ErrorClassification {
   const lowerError = error.toLowerCase();
 
+  // Authentication errors - requires re-auth, no retry
+  if (
+    lowerError.includes('parent session expired') ||
+    lowerError.includes('re-authentication required') ||
+    lowerError.includes('invalid refresh token') ||
+    lowerError.includes('10013') // Proton API error code for invalid refresh token
+  ) {
+    return {
+      category: ErrorCategory.AUTH,
+      maxRetries: MAX_RETRIES[ErrorCategory.AUTH],
+    };
+  }
+
   // Local filesystem errors - unlikely to self-resolve
   if (lowerError.includes('local path not found')) {
     return {
