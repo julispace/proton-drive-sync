@@ -44,6 +44,13 @@ function loadService(name: string, plistPath: string): ServiceResult {
     if (kickstart.exitCode === 0) {
       return { success: true };
     }
+
+    // Exit code 37 from kickstart can mean service is already running - treat as success
+    if (kickstart.exitCode === 37) {
+      logger.warn('Service already running (kickstart exit code 37)');
+      return { success: true };
+    }
+
     const kickstartStderr = new TextDecoder().decode(kickstart.stderr).trim();
     return {
       success: false,
