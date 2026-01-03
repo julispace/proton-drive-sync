@@ -277,16 +277,16 @@ install_libsecret() {
 	# Check if libsecret is already available
 	if ldconfig -p 2>/dev/null | grep -q libsecret; then
 		echo -e "${MUTED}libsecret is already installed${NC}"
-		# Still need to install dbus-x11 for headless mode if not present
+		# Still need to install dbus-x11 and gnome-keyring for headless mode
 		if [ "$headless_mode" = "true" ]; then
-			echo -e "${MUTED}Installing dbus for headless keyring support...${NC}"
+			echo -e "${MUTED}Installing dbus and gnome-keyring for headless keyring support...${NC}"
 			if command -v apt-get >/dev/null 2>&1; then
 				sudo apt-get update
-				sudo apt-get install -y dbus-x11
+				sudo apt-get install -y dbus-x11 gnome-keyring
 			elif command -v dnf >/dev/null 2>&1; then
-				sudo dnf install -y dbus-x11
+				sudo dnf install -y dbus-x11 gnome-keyring
 			elif command -v pacman >/dev/null 2>&1; then
-				sudo pacman -Sy --noconfirm dbus
+				sudo pacman -Sy --noconfirm dbus gnome-keyring
 			fi
 		fi
 		return
