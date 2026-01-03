@@ -97,11 +97,6 @@ fi
 combo="$os-$arch"
 case "$combo" in
 darwin-x64 | darwin-arm64 | linux-x64) ;;
-linux-arm64)
-	echo -e "${RED}Error: Linux ARM64 is not currently supported${NC}"
-	echo -e "${MUTED}Only Linux x64 (x86_64) is supported at this time${NC}"
-	exit 1
-	;;
 *)
 	echo -e "${RED}Unsupported platform: $combo${NC}"
 	echo -e "${MUTED}Supported platforms: macOS (x64, arm64), Linux (x64)${NC}"
@@ -137,6 +132,33 @@ install_watchman_macos() {
 }
 
 install_watchman_linux() {
+	# Check architecture for arm64-specific installation
+	local machine_arch
+	machine_arch=$(uname -m)
+
+	if [[ "$machine_arch" == "aarch64" || "$machine_arch" == "arm64" ]]; then
+		# ARM64 requires Debian-based system for .deb installation
+		if ! command -v dpkg >/dev/null 2>&1; then
+			echo -e "${RED}Error: Linux ARM64 is only supported on Debian-based distributions${NC}"
+			echo -e "${MUTED}The Watchman package is provided as a .deb file${NC}"
+			exit 1
+		fi
+
+		echo -e "${MUTED}Installing Watchman for ARM64 via .deb package...${NC}"
+
+		local tmp_dir
+		tmp_dir=$(mktemp -d)
+		local deb_url="https://www.damianb.dev/proton-drive-sync/watchman_2025.12.28.00_arm64.deb"
+
+		curl -L -o "$tmp_dir/watchman.deb" "$deb_url"
+		sudo dpkg -i "$tmp_dir/watchman.deb" || sudo apt-get install -f -y
+
+		rm -rf "$tmp_dir"
+
+		echo -e "${MUTED}Watchman installed successfully${NC}"
+		return
+	fi
+
 	echo -e "${MUTED}Installing Watchman from Facebook releases...${NC}"
 
 	# Detect package manager and install dependencies
