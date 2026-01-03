@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 
 import {
   CONFIG_FILE,
+  ensureConfigDir,
   loadConfig,
   DEFAULT_DASHBOARD_HOST,
   DEFAULT_DASHBOARD_PORT,
@@ -53,6 +54,9 @@ export function configCommand(this: Command, options: ConfigOptions): void {
 }
 
 function setConfigValues(pairs: string[]): void {
+  // Ensure config directory exists before writing
+  ensureConfigDir();
+
   // Load existing config file (raw JSON to preserve unknown fields)
   let configData: Record<string, unknown> = {};
   if (existsSync(CONFIG_FILE)) {

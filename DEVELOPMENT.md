@@ -49,14 +49,9 @@ make run ARGS="service install"
 To publish a new version:
 
 1. Update version in `package.json`
-2. Create and push a git tag:
+2. Create a new release with the respective tag
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The GitHub Actions release workflow will automatically build binaries for macOS (arm64 and x64) and create a GitHub release.
+The GitHub Actions release workflow will automatically build binaries for all platforms.
 
 ## Installing Pre-release Versions
 
