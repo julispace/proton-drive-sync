@@ -3,7 +3,7 @@
 ## Requirements
 
 - [Watchman](https://facebook.github.io/watchman/) - file system monitoring
-- [pywatchman](https://pypi.org/project/pywatchman/) (`pip install pywatchman`) - required on Linux only
+- [pywatchman](https://pypi.org/project/pywatchman/) (`pip install pywatchman`) - required on Linux for `make dev`
 
 ## Setup
 
