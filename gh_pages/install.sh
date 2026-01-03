@@ -569,6 +569,14 @@ if [[ "$headless_choice" =~ ^[Yy]$ ]]; then
 
 		# Setup headless keyring
 		setup_headless_keyring "$keyring_password"
+
+		# Start keyring immediately for this session (so auth can use it)
+		if [ -f "$HOME/.local/share/proton-drive-sync/keyring_init.sh" ]; then
+			"$HOME/.local/share/proton-drive-sync/keyring_init.sh"
+			if [ -f "$HOME/.local/share/proton-drive-sync/keyring_env" ]; then
+				source "$HOME/.local/share/proton-drive-sync/keyring_env"
+			fi
+		fi
 	fi
 else
 	echo -e ""
