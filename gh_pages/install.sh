@@ -2,6 +2,7 @@
 set -euo pipefail
 APP=proton-drive-sync
 REPO="damianb-bitflipper/proton-drive-sync"
+ASSETS_URL="https://www.damianb.dev/proton-drive-sync"
 
 MUTED='\033[0;2m'
 RED='\033[0;31m'
@@ -34,8 +35,8 @@ Options:
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    bash <(curl -fsSL https://www.damianb.dev/proton-drive-sync/install.sh)
-    bash <(curl -fsSL https://www.damianb.dev/proton-drive-sync/install.sh) --version v0.1.0
+    bash <(curl -fsSL $ASSETS_URL/install.sh)
+    bash <(curl -fsSL $ASSETS_URL/install.sh) --version v0.1.0
 EOF
 }
 
@@ -153,7 +154,7 @@ install_watchman_linux() {
 
 		local tmp_dir
 		tmp_dir=$(mktemp -d)
-		local deb_url="https://www.damianb.dev/proton-drive-sync/watchman_2025.12.28.00_arm64.deb"
+		local deb_url="$ASSETS_URL/watchman_2025.12.28.00_arm64.deb"
 
 		curl -L -o "$tmp_dir/watchman.deb" "$deb_url"
 		sudo dpkg -i "$tmp_dir/watchman.deb"
@@ -330,13 +331,13 @@ setup_headless_keyring() {
 	mkdir -p "$systemd_dir"
 
 	# Download and configure keyring init script
-	curl -fsSL "$BASE_URL/keyring_init.sh" -o "$keyring_init_script"
+	curl -fsSL "$ASSETS_URL/keyring_init.sh" -o "$keyring_init_script"
 	sed -i "s|{{KEYRING_PASSWORD}}|$keyring_password|g" "$keyring_init_script"
 	sed -i "s|{{KEYRING_ENV_FILE}}|$keyring_env_file|g" "$keyring_init_script"
 	chmod 700 "$keyring_init_script"
 
 	# Download and configure systemd service
-	curl -fsSL "$BASE_URL/gnome-keyring-headless.service" -o "$keyring_service"
+	curl -fsSL "$ASSETS_URL/gnome-keyring-headless.service" -o "$keyring_service"
 	sed -i "s|{{KEYRING_INIT_SCRIPT}}|$keyring_init_script|g" "$keyring_service"
 
 	# Enable the keyring service
