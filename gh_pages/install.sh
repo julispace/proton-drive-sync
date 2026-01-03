@@ -96,10 +96,10 @@ fi
 # Validate OS/arch combination
 combo="$os-$arch"
 case "$combo" in
-darwin-x64 | darwin-arm64 | linux-x64) ;;
+darwin-x64 | darwin-arm64 | linux-x64 | linux-arm64) ;;
 *)
 	echo -e "${RED}Unsupported platform: $combo${NC}"
-	echo -e "${MUTED}Supported platforms: macOS (x64, arm64), Linux (x64)${NC}"
+	echo -e "${MUTED}Supported platforms: macOS (x64, arm64), Linux (x64, arm64)${NC}"
 	exit 1
 	;;
 esac

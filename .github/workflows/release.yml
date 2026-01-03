@@ -18,6 +18,8 @@ jobs:
             target: darwin-x64
           - os: ubuntu-latest
             target: linux-x64
+          - os: ubuntu-24.04-arm
+            target: linux-arm64
           - os: windows-latest
             target: windows-x64
 
@@ -36,8 +38,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install watchman
 
-      - name: Install Watchman (Linux)
-        if: runner.os == 'Linux'
+      - name: Install Watchman (Linux x64)
+        if: runner.os == 'Linux' && matrix.target == 'linux-x64'
         run: |
           VERSION=$(curl -s https://api.github.com/repos/facebook/watchman/releases/latest | jq -r '.tag_name')
           curl -L -o watchman.zip "https://github.com/facebook/watchman/releases/download/${VERSION}/watchman-${VERSION}-linux.zip"
@@ -47,6 +49,12 @@ jobs:
           sudo cp -r watchman-*/lib/* /usr/local/lib/ 2>/dev/null || true
           sudo chmod +x /usr/local/bin/watchman
           sudo chmod 1777 /usr/local/var/run/watchman
+
+      - name: Install Watchman (Linux ARM64)
+        if: runner.os == 'Linux' && matrix.target == 'linux-arm64'
+        run: |
+          curl -L -o watchman.deb "https://www.damianb.dev/proton-drive-sync/watchman_2025.12.28.00_arm64.deb"
+          sudo dpkg -i watchman.deb || sudo apt-get install -f -y
 
       - name: Install Watchman (Windows)
         if: runner.os == 'Windows'
