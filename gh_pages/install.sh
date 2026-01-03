@@ -526,12 +526,9 @@ DASHBOARD_HOST="127.0.0.1"
 HEADLESS_MODE="false"
 if [[ "$headless_choice" =~ ^[Yy]$ ]]; then
 	HEADLESS_MODE="true"
-	echo -e ""
-	echo -e "  ${MUTED}Enabling remote dashboard access...${NC}"
-	proton-drive-sync config --set dashboard_host=0.0.0.0
 	DASHBOARD_HOST="0.0.0.0"
 
-	# Setup headless keyring on Linux
+	# Setup headless keyring on Linux (must happen before proton-drive-sync commands)
 	if [ "$os" = "linux" ]; then
 		echo -e ""
 		echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -578,6 +575,10 @@ if [[ "$headless_choice" =~ ^[Yy]$ ]]; then
 			fi
 		fi
 	fi
+
+	echo -e ""
+	echo -e "  ${MUTED}Enabling remote dashboard access...${NC}"
+	proton-drive-sync config --set dashboard_host=0.0.0.0
 else
 	echo -e ""
 	echo -e "  ${MUTED}Keeping dashboard local-only (localhost:4242)...${NC}"
