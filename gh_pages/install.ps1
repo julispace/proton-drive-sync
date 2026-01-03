@@ -254,7 +254,7 @@ else {
 }
 
 # ============================================================================
-# Authentication
+# Installation Complete
 # ============================================================================
 
 Write-Host ""
@@ -263,64 +263,93 @@ Write-Host "  Installation Complete!" -ForegroundColor Green
 Write-Host "============================================" -ForegroundColor White
 Write-Host ""
 
-$response = Read-Host "Would you like to authenticate now? (Y/n)"
-if ($response -eq '' -or $response -eq 'y' -or $response -eq 'Y') {
+# ============================================================================
+# Remote Dashboard Access
+# ============================================================================
+
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor White
+Write-Host "  Remote Dashboard Access" -ForegroundColor Cyan
+Write-Host "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor White
+Write-Host ""
+Write-Host "  The dashboard is available at localhost:4242 by default."
+Write-Host ""
+Write-Host "  For headless/server installs, you can enable remote access by binding"
+Write-Host "  the web interface to all network interfaces (0.0.0.0:4242)."
+Write-Host ""
+Write-Host "  WARNING: This exposes the dashboard to your network." -ForegroundColor Yellow
+Write-Host "  The dashboard allows service control and configuration changes." -ForegroundColor DarkGray
+Write-Host "  Only enable this on trusted networks or behind a firewall." -ForegroundColor DarkGray
+Write-Host ""
+
+$DASHBOARD_HOST = "127.0.0.1"
+$headlessChoice = Read-Host "  Enable remote dashboard access? [y/N]"
+if ($headlessChoice -eq 'y' -or $headlessChoice -eq 'Y') {
     Write-Host ""
-    Write-Host "Starting authentication..." -ForegroundColor Cyan
-    Write-Host "A browser window will open for you to log in to Proton." -ForegroundColor White
-    Write-Host ""
-    
-    & "$BIN_DIR\$APP.exe" auth
-    
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host ""
-        Write-Success "Authentication successful!"
-        Write-Host ""
-        
-        # Start the daemon
-        Write-Step "Starting sync daemon..."
-        & "$BIN_DIR\$APP.exe" start
-        
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Daemon started!"
-            
-            # Open dashboard
-            Write-Host ""
-            Write-Host "Opening dashboard..." -ForegroundColor Cyan
-            Start-Sleep -Seconds 2  # Give daemon time to start
-            Open-Browser "http://localhost:4242"
-            
-            Write-Host ""
-            Write-Host "Dashboard available at: http://localhost:4242" -ForegroundColor Green
-            Write-Host ""
-            Write-Host "Next steps:" -ForegroundColor Cyan
-            Write-Host "  1. Add a directory to sync in the dashboard"
-            Write-Host "  2. Or run: $APP config add <path>"
-            Write-Host "  3. To run at startup: $APP service install"
-        }
-        else {
-            Write-Warn "Could not start daemon automatically."
-            Write-Host ""
-            Write-Host "To start manually:" -ForegroundColor Cyan
-            Write-Host "  1. Add a directory: $APP config add <path>"
-            Write-Host "  2. Start syncing:   $APP start"
-        }
-    }
-    else {
-        Write-Warn "Authentication was not completed."
-        Write-Host ""
-        Write-Host "You can authenticate later by running: $APP auth" -ForegroundColor Yellow
-    }
+    Write-Host "  Enabling remote dashboard access..." -ForegroundColor DarkGray
+    & "$BIN_DIR\$APP.exe" config --set dashboard_host=0.0.0.0
+    $DASHBOARD_HOST = "0.0.0.0"
 }
 else {
     Write-Host ""
-    Write-Host "You can authenticate later by running: $APP auth" -ForegroundColor Yellow
+    Write-Host "  Keeping dashboard local-only (localhost:4242)..." -ForegroundColor DarkGray
+    & "$BIN_DIR\$APP.exe" config --set dashboard_host=127.0.0.1
+}
+
+# ============================================================================
+# Authentication
+# ============================================================================
+
+Write-Host ""
+Write-Host "Starting authentication..." -ForegroundColor Cyan
+Write-Host "A browser window will open for you to log in to Proton." -ForegroundColor White
+Write-Host ""
+
+& "$BIN_DIR\$APP.exe" auth
+
+if ($LASTEXITCODE -ne 0) {
     Write-Host ""
-    Write-Host "Quick start:" -ForegroundColor Cyan
-    Write-Host "  1. Authenticate:     $APP auth"
-    Write-Host "  2. Add a directory:  $APP config add <path>"
-    Write-Host "  3. Start syncing:    $APP start"
-    Write-Host "  4. Run at startup:   $APP service install"
+    Write-Host "Authentication failed or was cancelled." -ForegroundColor Red
+    Write-Host "Run the install command again to retry." -ForegroundColor DarkGray
+    exit 1
+}
+
+Write-Host ""
+Write-Success "Authentication successful!"
+Write-Host ""
+
+# Start the daemon
+Write-Step "Starting sync daemon..."
+& "$BIN_DIR\$APP.exe" start
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Success "Daemon started!"
+    
+    # Open dashboard
+    Write-Host ""
+    Write-Host "Opening dashboard..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 2  # Give daemon time to start
+    Open-Browser "http://localhost:4242"
+    
+    Write-Host ""
+    Write-Host "Complete your configuration by visiting the dashboard at:" -ForegroundColor DarkGray
+    Write-Host ""
+    if ($DASHBOARD_HOST -eq "0.0.0.0") {
+        # Try to get local IP address
+        $LOCAL_IP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notlike "*Loopback*" -and $_.PrefixOrigin -ne "WellKnown" } | Select-Object -First 1).IPAddress
+        if (-not $LOCAL_IP) { $LOCAL_IP = "your-server-ip" }
+        Write-Host "  http://${LOCAL_IP}:4242" -ForegroundColor Green
+        Write-Host "  (Also accessible at http://localhost:4242 on this machine)" -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "  http://localhost:4242" -ForegroundColor Green
+    }
+}
+else {
+    Write-Warn "Could not start daemon automatically."
+    Write-Host ""
+    Write-Host "To start manually:" -ForegroundColor Cyan
+    Write-Host "  1. Add a directory: $APP config add <path>"
+    Write-Host "  2. Start syncing:   $APP start"
 }
 
 Write-Host ""

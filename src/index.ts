@@ -44,7 +44,11 @@ program
   .description('Authenticate and save credentials securely')
   .action(authCommand);
 
-program.command('config').description('Open config file in nano').action(configCommand);
+program
+  .command('config')
+  .description('Open settings dashboard or set config values')
+  .option('--set <key=value...>', 'Set config values directly (e.g., --set dashboard_host=0.0.0.0)')
+  .action(configCommand);
 
 program
   .command('reset')

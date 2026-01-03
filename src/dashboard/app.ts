@@ -34,7 +34,13 @@ import {
 } from '../flags.js';
 import { sendSignal } from '../signals.js';
 import { logger, enableIpcLogging } from '../logger.js';
-import { CONFIG_FILE, CONFIG_CHECK_SIGNAL, DEFAULT_SYNC_CONCURRENCY } from '../config.js';
+import {
+  CONFIG_FILE,
+  CONFIG_CHECK_SIGNAL,
+  DEFAULT_SYNC_CONCURRENCY,
+  DEFAULT_DASHBOARD_HOST,
+  DEFAULT_DASHBOARD_PORT,
+} from '../config.js';
 import {
   type AuthStatusUpdate,
   type DashboardDiff,
@@ -155,7 +161,6 @@ export function snapshot(): DashboardSnapshot {
 // Constants
 // ============================================================================
 
-const DASHBOARD_PORT = 4242;
 const LOG_FILE = join(xdgState || '', 'proton-drive-sync', 'sync.log');
 
 // Store initial log position at subprocess startup (so refreshes get all session logs)
@@ -188,6 +193,28 @@ let cachedCounts: JobCounts | null = null;
  * Read and process messages from parent process via stdin.
  * Messages are newline-delimited JSON.
  */
+/**
+ * Wait for the initial config message from parent process before starting server.
+ * This ensures we have the correct dashboard_host/dashboard_port values.
+ */
+async function waitForInitialConfig(): Promise<void> {
+  const rl = createInterface({ input: process.stdin });
+
+  for await (const line of rl) {
+    if (!line.trim()) continue;
+
+    const msg = parseMessage<ParentMessage>(line);
+    if (!msg) continue;
+
+    if (msg.type === 'config') {
+      if (msg.dryRun !== undefined) isDryRun = msg.dryRun;
+      if (msg.config) currentConfig = msg.config;
+      rl.close();
+      return;
+    }
+  }
+}
+
 async function readParentMessages(): Promise<void> {
   const rl = createInterface({ input: process.stdin });
 
@@ -1379,7 +1406,7 @@ app.get('/api/logs', async (c) => {
  * Start the dashboard server. Called via 'start --dashboard' command.
  * Communicates with parent process via stdin (receive) and stdout (send).
  */
-export function runDashboardServer(): void {
+async function runDashboardServer(): Promise<void> {
   // The dashboard subprocess communicates with the sync client via stdin/stdout:
   // - stdin: receives JSON messages from parent (config, status updates, heartbeats)
   // - stdout: sends JSON messages to parent (ready signal, errors, log messages)
@@ -1399,14 +1426,29 @@ export function runDashboardServer(): void {
   }
 
   try {
+    // Wait for initial config from parent before starting server
+    // This ensures we have the correct dashboard_host/dashboard_port values
+    await waitForInitialConfig();
+
+    const host = currentConfig?.dashboard_host ?? DEFAULT_DASHBOARD_HOST;
+    const port = currentConfig?.dashboard_port ?? DEFAULT_DASHBOARD_PORT;
+
+    // Security warning for external interface binding
+    if (host === '0.0.0.0' || (host !== '127.0.0.1' && host !== 'localhost')) {
+      logger.warn('Dashboard bound to external interface');
+      logger.warn('The dashboard allows service control and config changes');
+      logger.warn('Ensure your network is secure or use a firewall');
+    }
+
     const server = Bun.serve({
       fetch: app.fetch,
-      port: DASHBOARD_PORT,
+      port,
+      hostname: host,
       idleTimeout: 0, // Disable timeout - SSE connections stay open indefinitely
     });
 
     // Bun.serve() is synchronous - if we reach here, server is listening
-    safeSend({ type: 'ready', port: DASHBOARD_PORT });
+    safeSend({ type: 'ready', port, host });
 
     // Start reading messages from parent via stdin
     readParentMessages();
@@ -1430,5 +1472,8 @@ export function runDashboardServer(): void {
 
 /** Entry point - called when running as dashboard subprocess via 'start --dashboard' */
 export function startDashboardMode(): void {
-  runDashboardServer();
+  runDashboardServer().catch((err) => {
+    logger.error(`Dashboard server failed: ${err}`);
+    process.exit(1);
+  });
 }

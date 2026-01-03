@@ -409,7 +409,36 @@ echo -e ""
 echo -e "${MUTED}Proton Drive Sync${NC} installed successfully!"
 echo -e ""
 
+# Ask about headless/remote dashboard access (before auth so user can configure while waiting)
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "  ${CYAN}Remote Dashboard Access${NC}"
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e ""
+echo -e "  The dashboard is available at ${NC}localhost:4242${MUTED} by default.${NC}"
+echo -e ""
+echo -e "  For headless/server installs, you can enable remote access by binding"
+echo -e "  the web interface to all network interfaces (0.0.0.0:4242)."
+echo -e ""
+echo -e "  ${ORANGE}WARNING: This exposes the dashboard to your network.${NC}"
+echo -e "  ${MUTED}The dashboard allows service control and configuration changes.${NC}"
+echo -e "  ${MUTED}Only enable this on trusted networks or behind a firewall.${NC}"
+echo -e ""
+read -p "  Enable remote dashboard access? [y/N]: " headless_choice
+
+DASHBOARD_HOST="127.0.0.1"
+if [[ "$headless_choice" =~ ^[Yy]$ ]]; then
+	echo -e ""
+	echo -e "  ${MUTED}Enabling remote dashboard access...${NC}"
+	proton-drive-sync config --set dashboard_host=0.0.0.0
+	DASHBOARD_HOST="0.0.0.0"
+else
+	echo -e ""
+	echo -e "  ${MUTED}Keeping dashboard local-only (localhost:4242)...${NC}"
+	proton-drive-sync config --set dashboard_host=127.0.0.1
+fi
+
 # Run auth flow
+echo -e ""
 echo -e "${MUTED}Starting authentication...${NC}"
 echo -e ""
 if ! proton-drive-sync auth; then
@@ -448,4 +477,15 @@ open_browser "http://localhost:4242"
 echo -e ""
 echo -e "${MUTED}Complete your configuration by visiting the dashboard at:${NC}"
 echo -e ""
-echo -e "  http://localhost:4242"
+if [ "$DASHBOARD_HOST" = "0.0.0.0" ]; then
+	# Try to get local IP address
+	if [ "$os" = "darwin" ]; then
+		LOCAL_IP=$(ipconfig getifaddr en0 2>/dev/null || echo "your-server-ip")
+	else
+		LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "your-server-ip")
+	fi
+	echo -e "  http://${LOCAL_IP}:4242"
+	echo -e "  ${MUTED}(Also accessible at http://localhost:4242 on this machine)${NC}"
+else
+	echo -e "  http://localhost:4242"
+fi

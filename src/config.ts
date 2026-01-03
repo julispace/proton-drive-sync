@@ -23,6 +23,8 @@ export interface SyncDir {
 export interface Config {
   sync_dirs: SyncDir[];
   sync_concurrency: number;
+  dashboard_host?: string;
+  dashboard_port?: number;
 }
 
 /** Config keys that can be watched for changes */
@@ -40,6 +42,12 @@ export const CONFIG_CHECK_SIGNAL = 'config:check';
 
 /** Default sync concurrency */
 export const DEFAULT_SYNC_CONCURRENCY = 4;
+
+/** Default dashboard host (localhost only) */
+export const DEFAULT_DASHBOARD_HOST = '127.0.0.1';
+
+/** Default dashboard port */
+export const DEFAULT_DASHBOARD_PORT = 4242;
 
 const CONFIG_DIR = getConfigDir();
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
@@ -207,7 +215,7 @@ function reloadConfig(): void {
   if (!oldConfig) return;
 
   // Send signals for keys that changed
-  const keys: ConfigKey[] = ['sync_dirs', 'sync_concurrency'];
+  const keys: ConfigKey[] = ['sync_dirs', 'sync_concurrency', 'dashboard_host', 'dashboard_port'];
   for (const key of keys) {
     if (!isEqual(oldConfig[key], newConfig[key])) {
       logger.debug(`Config key "${key}" changed, sending signal`);

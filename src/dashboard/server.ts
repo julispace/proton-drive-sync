@@ -162,7 +162,8 @@ async function readChildMessages(stdout: ReadableStream<Uint8Array>): Promise<vo
         if (!msg) continue;
 
         if (msg.type === 'ready') {
-          logger.info(`Dashboard running at http://localhost:${msg.port}`);
+          const host = msg.host ?? 'localhost';
+          logger.info(`Dashboard bound to ${host} on port ${msg.port}`);
 
           // Send initial status when dashboard is ready
           sendStatusToDashboard();

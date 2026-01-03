@@ -108,6 +108,7 @@ export type ParentMessage = ConfigMessage | JobStateDiffMessage | StatusMessage 
 export interface ReadyMessage {
   type: 'ready';
   port: number;
+  host?: string;
 }
 
 /** Error message sent when dashboard server fails to start */
