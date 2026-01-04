@@ -60,10 +60,6 @@ if [ "$os" = "linux" ]; then
 		echo -e "${MUTED}Removed ${NC}/var/lib/proton-drive-sync"
 	fi
 
-	# Remove keyring dummy secret if secret-tool is available
-	if command -v secret-tool >/dev/null 2>&1; then
-		secret-tool clear service proton-drive-sync type init 2>/dev/null || true
-	fi
 fi
 
 echo -e ""
@@ -190,7 +186,7 @@ if [ "$os" = "linux" ]; then
 	echo -e ""
 	echo -e "${MUTED}Note: The following packages were installed as dependencies and may be${NC}"
 	echo -e "${MUTED}used by other applications. Remove them manually if no longer needed:${NC}"
-	echo -e "${MUTED}  sudo apt remove libsecret-1-0 libsecret-tools gnome-keyring dbus-x11 jq${NC}"
+	echo -e "${MUTED}  sudo apt remove libsecret-1-0 python3-secretstorage gnome-keyring dbus-x11 jq${NC}"
 fi
 
 echo -e ""

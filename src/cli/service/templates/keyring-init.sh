@@ -23,8 +23,8 @@ if ! pgrep -u "$(id -u)" -x "gnome-keyring-d" >/dev/null 2>&1; then
 	echo "$KEYRING_PASSWORD" | gnome-keyring-daemon --unlock --components=secrets --daemonize >/dev/null 2>&1
 fi
 
-# Create default collection if it doesn't exist (stores a dummy secret)
-echo -n "init" | secret-tool store --label="proton-drive-sync-init" service proton-drive-sync type init 2>/dev/null || true
+# Create default collection if it doesn't exist
+python3 -c "import secretstorage; conn = secretstorage.dbus_init(); secretstorage.get_default_collection(conn)" 2>/dev/null || true
 
 # Export environment variables for dependent services
 {
