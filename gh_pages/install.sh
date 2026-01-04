@@ -327,6 +327,32 @@ print_message() {
 	echo -e "${color}${message}${NC}"
 }
 
+# Prompt for yes/no input, re-prompting until valid
+# Usage: prompt_yn "Your question here" [y|n]
+# Second arg is the recommended default (shown as [Y/n] or [y/N])
+# Returns: 0 for yes, 1 for no
+prompt_yn() {
+	local prompt="$1"
+	local recommended="${2:-}"
+	local hint="(y/n)"
+
+	if [[ "$recommended" == "y" ]]; then
+		hint="[Y/n]"
+	elif [[ "$recommended" == "n" ]]; then
+		hint="[y/N]"
+	fi
+
+	local response
+	while true; do
+		read -r -p "$prompt $hint: " response
+		case "$response" in
+		[Yy]) return 0 ;;
+		[Nn]) return 1 ;;
+		*) echo "Please enter 'y' or 'n'." ;;
+		esac
+	done
+}
+
 skip_download=false
 
 check_version() {
@@ -458,10 +484,8 @@ echo -e "  ${ORANGE}WARNING: This exposes the dashboard to your network.${NC}"
 echo -e "  ${MUTED}The dashboard allows service control and configuration changes.${NC}"
 echo -e "  ${MUTED}Only enable this on trusted networks or behind a firewall.${NC}"
 echo -e ""
-read -p "  Enable remote dashboard access? [y/N]: " remote_choice
-
 DASHBOARD_HOST="127.0.0.1"
-if [[ "$remote_choice" =~ ^[Yy]$ ]]; then
+if prompt_yn "  Enable remote dashboard access?" "n"; then
 	DASHBOARD_HOST="0.0.0.0"
 	echo -e ""
 	echo -e "  ${MUTED}Enabling remote dashboard access...${NC}"
@@ -504,9 +528,7 @@ if [ "$os" = "linux" ]; then
 	SERVICE_INSTALLED=true
 else
 	# macOS/Windows - only user scope supported
-	read -p "  Start sync service automatically on login? [Y/n]: " login_choice
-
-	if [[ ! "$login_choice" =~ ^[Nn]$ ]]; then
+	if prompt_yn "  Start sync service automatically on login?" "y"; then
 		echo -e ""
 		echo -e "  ${MUTED}Installing service...${NC}"
 		"$INSTALL_DIR/proton-drive-sync" service install
@@ -531,9 +553,10 @@ echo -e ""
 if [ "$os" = "linux" ]; then
 	export KEYRING_PASSWORD="proton-drive-sync"
 
-	# For system service installs, run auth with sudo so credentials are stored in /etc/
+	# For system service installs, run auth with sudo but preserve XDG_CONFIG_HOME
+	# so credentials are stored in the user's config dir (where the service will look)
 	if [ "${service_choice:-}" = "2" ]; then
-		if ! sudo KEYRING_PASSWORD="proton-drive-sync" "$INSTALL_DIR/proton-drive-sync" auth; then
+		if ! sudo XDG_CONFIG_HOME="$HOME/.config" KEYRING_PASSWORD="proton-drive-sync" "$INSTALL_DIR/proton-drive-sync" auth; then
 			echo -e ""
 			echo -e "${RED}Authentication failed or was cancelled.${NC}"
 			echo -e "${MUTED}Run the install command again to retry.${NC}"

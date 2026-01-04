@@ -6,6 +6,32 @@ MUTED='\033[0;2m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Prompt for yes/no input, re-prompting until valid
+# Usage: prompt_yn "Your question here" [y|n]
+# Second arg is the recommended default (shown as [Y/n] or [y/N])
+# Returns: 0 for yes, 1 for no
+prompt_yn() {
+	local prompt="$1"
+	local recommended="${2:-}"
+	local hint="(y/n)"
+
+	if [[ "$recommended" == "y" ]]; then
+		hint="[Y/n]"
+	elif [[ "$recommended" == "n" ]]; then
+		hint="[y/N]"
+	fi
+
+	local response
+	while true; do
+		read -r -p "$prompt $hint: " response
+		case "$response" in
+		[Yy]) return 0 ;;
+		[Nn]) return 1 ;;
+		*) echo "Please enter 'y' or 'n'." ;;
+		esac
+	done
+}
+
 INSTALL_DIR="$HOME/.local/bin"
 
 # Detect OS
@@ -130,9 +156,7 @@ CONFIG_DIR="$HOME/.config/proton-drive-sync"
 STATE_DIR="$HOME/.local/state/proton-drive-sync"
 
 if [[ -d "$CONFIG_DIR" ]] || [[ -d "$STATE_DIR" ]]; then
-	read -p "Delete your configuration settings and sync history? (y/N): " -n 1 -r
-	echo -e ""
-	if [[ $REPLY =~ ^[Yy]$ ]]; then
+	if prompt_yn "Delete your configuration settings and sync history?" "n"; then
 		[[ -d "$CONFIG_DIR" ]] && rm -rf "$CONFIG_DIR" && echo -e "${MUTED}Removed${NC} $CONFIG_DIR"
 		[[ -d "$STATE_DIR" ]] && rm -rf "$STATE_DIR" && echo -e "${MUTED}Removed${NC} $STATE_DIR"
 	fi
@@ -142,9 +166,7 @@ fi
 # Prompt user about Watchman
 if command -v watchman >/dev/null 2>&1; then
 	echo -e "${MUTED}Watchman is still installed on your system.${NC}"
-	read -p "Would you like to remove Watchman as well? [Y/n] " -n 1 -r
-	echo -e ""
-	if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+	if prompt_yn "Would you like to remove Watchman as well?" "y"; then
 		if [ "$os" = "darwin" ]; then
 			# macOS: use Homebrew
 			if command -v brew >/dev/null 2>&1; then
