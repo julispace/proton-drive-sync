@@ -330,8 +330,8 @@ print_message() {
 skip_download=false
 
 check_version() {
-	if command -v proton-drive-sync >/dev/null 2>&1; then
-		installed_version=$(proton-drive-sync --version 2>/dev/null || echo "0.0.0")
+	if [ -x "$INSTALL_DIR/proton-drive-sync" ]; then
+		installed_version=$("$INSTALL_DIR/proton-drive-sync" --version 2>/dev/null || echo "0.0.0")
 		installed_version=$(echo "$installed_version" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "0.0.0")
 
 		if [[ "$installed_version" != "$specific_version" ]]; then
@@ -431,12 +431,9 @@ if [[ "$no_modify_path" != "true" ]]; then
 	fi
 fi
 
-# Add INSTALL_DIR to PATH for the rest of the script
-export PATH="$INSTALL_DIR:$PATH"
-
 # Verify proton-drive-sync is found
-if ! command -v proton-drive-sync >/dev/null 2>&1; then
-	echo -e "${RED}Error: proton-drive-sync not found in PATH after installation${NC}"
+if [ ! -x "$INSTALL_DIR/proton-drive-sync" ]; then
+	echo -e "${RED}Error: proton-drive-sync not found at $INSTALL_DIR after installation${NC}"
 	exit 1
 fi
 
@@ -468,11 +465,11 @@ if [[ "$remote_choice" =~ ^[Yy]$ ]]; then
 	DASHBOARD_HOST="0.0.0.0"
 	echo -e ""
 	echo -e "  ${MUTED}Enabling remote dashboard access...${NC}"
-	proton-drive-sync config --set dashboard_host=0.0.0.0
+	"$INSTALL_DIR/proton-drive-sync" config --set dashboard_host=0.0.0.0
 else
 	echo -e ""
 	echo -e "  ${MUTED}Keeping dashboard local-only (localhost:4242)...${NC}"
-	proton-drive-sync config --set dashboard_host=127.0.0.1
+	"$INSTALL_DIR/proton-drive-sync" config --set dashboard_host=127.0.0.1
 fi
 
 # ============================================================================
@@ -498,11 +495,11 @@ if [ "$os" = "linux" ]; then
 	if [ "$service_choice" = "2" ]; then
 		echo -e ""
 		echo -e "  ${MUTED}Installing system service (requires sudo)...${NC}"
-		sudo proton-drive-sync service install --install-scope=system
+		sudo "$INSTALL_DIR/proton-drive-sync" service install --install-scope=system
 	else
 		echo -e ""
 		echo -e "  ${MUTED}Installing user service...${NC}"
-		proton-drive-sync service install
+		"$INSTALL_DIR/proton-drive-sync" service install
 	fi
 	SERVICE_INSTALLED=true
 else
@@ -512,7 +509,7 @@ else
 	if [[ ! "$login_choice" =~ ^[Nn]$ ]]; then
 		echo -e ""
 		echo -e "  ${MUTED}Installing service...${NC}"
-		proton-drive-sync service install
+		"$INSTALL_DIR/proton-drive-sync" service install
 		SERVICE_INSTALLED=true
 	else
 		echo -e ""
@@ -528,7 +525,7 @@ fi
 echo -e ""
 echo -e "${MUTED}Starting authentication...${NC}"
 echo -e ""
-if ! proton-drive-sync auth; then
+if ! "$INSTALL_DIR/proton-drive-sync" auth; then
 	echo -e ""
 	echo -e "${RED}Authentication failed or was cancelled.${NC}"
 	echo -e "${MUTED}Run the install command again to retry.${NC}"
@@ -558,7 +555,7 @@ port=4242
 status=""
 
 while [ $attempt -lt $max_attempts ]; do
-	if status_json=$(proton-drive-sync status 2>/dev/null); then
+	if status_json=$("$INSTALL_DIR/proton-drive-sync" status 2>/dev/null); then
 		status=$(echo "$status_json" | jq -r '.status' 2>/dev/null) || true
 		port=$(echo "$status_json" | jq -r '.port' 2>/dev/null) || true
 		if [ "$status" = "running" ]; then
