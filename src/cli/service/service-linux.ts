@@ -408,6 +408,19 @@ function createLinuxService(scope: InstallScope): ServiceOperations {
         runSystemctl(scope, 'disable', KEYRING_SERVICE_NAME);
       }
 
+      // For system scope, enable user lingering to ensure D-Bus session bus exists at boot
+      if (scope === 'system') {
+        const user = getCurrentUser();
+        const lingerResult = Bun.spawnSync(['loginctl', 'enable-linger', user]);
+        if (lingerResult.exitCode !== 0) {
+          logger.warn(
+            `Failed to enable lingering for user ${user}. D-Bus session bus may not be available at boot.`
+          );
+        } else {
+          logger.debug(`Enabled lingering for user ${user}`);
+        }
+      }
+
       // Install keyring service first
       if (!installKeyringService(password, scope)) {
         logger.error('Failed to install keyring service');
@@ -495,6 +508,13 @@ function createLinuxService(scope: InstallScope): ServiceOperations {
 
         // Uninstall keyring service
         uninstallKeyringService('system');
+
+        // Disable user lingering (enabled during install for D-Bus session bus)
+        const user = getCurrentUser();
+        const lingerResult = Bun.spawnSync(['loginctl', 'disable-linger', user]);
+        if (lingerResult.exitCode === 0) {
+          logger.debug(`Disabled lingering for user ${user}`);
+        }
 
         daemonReload('system');
       }
