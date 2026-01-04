@@ -530,13 +530,31 @@ echo -e ""
 # This must match the hardcoded password in the service file
 if [ "$os" = "linux" ]; then
 	export KEYRING_PASSWORD="proton-drive-sync"
-fi
 
-if ! "$INSTALL_DIR/proton-drive-sync" auth; then
-	echo -e ""
-	echo -e "${RED}Authentication failed or was cancelled.${NC}"
-	echo -e "${MUTED}Run the install command again to retry.${NC}"
-	exit 1
+	# For system service installs, run auth with sudo so credentials are stored in /etc/
+	if [ "${service_choice:-}" = "2" ]; then
+		if ! sudo KEYRING_PASSWORD="proton-drive-sync" "$INSTALL_DIR/proton-drive-sync" auth; then
+			echo -e ""
+			echo -e "${RED}Authentication failed or was cancelled.${NC}"
+			echo -e "${MUTED}Run the install command again to retry.${NC}"
+			exit 1
+		fi
+	else
+		if ! "$INSTALL_DIR/proton-drive-sync" auth; then
+			echo -e ""
+			echo -e "${RED}Authentication failed or was cancelled.${NC}"
+			echo -e "${MUTED}Run the install command again to retry.${NC}"
+			exit 1
+		fi
+	fi
+else
+	# macOS - no KEYRING_PASSWORD needed, uses Keychain
+	if ! "$INSTALL_DIR/proton-drive-sync" auth; then
+		echo -e ""
+		echo -e "${RED}Authentication failed or was cancelled.${NC}"
+		echo -e "${MUTED}Run the install command again to retry.${NC}"
+		exit 1
+	fi
 fi
 
 # Open browser (platform-specific)
