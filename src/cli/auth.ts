@@ -2,7 +2,7 @@
  * Auth Command - Authenticate and save credentials securely
  */
 
-import { input, password } from '@inquirer/prompts';
+import { input, password, confirm } from '@inquirer/prompts';
 import {
   ProtonAuth,
   createProtonHttpClient,
@@ -12,7 +12,7 @@ import {
   initCrypto,
 } from '../auth.js';
 import type { Session } from '../auth.js';
-import { storeCredentials, deleteStoredCredentials } from '../keychain.js';
+import { storeCredentials, deleteStoredCredentials, getStoredCredentials } from '../keychain.js';
 import type { StoredCredentials } from '../keychain.js';
 import type { ProtonDriveClient, ApiError } from '../proton/types.js';
 import { logger } from '../logger.js';
@@ -152,6 +152,30 @@ export async function authCommand(options: { logout?: boolean } = {}): Promise<v
     await deleteStoredCredentials();
     logger.info('Credentials cleared from keychain.');
     return;
+  }
+
+  // Check for existing valid authentication
+  const existingCredentials = await getStoredCredentials();
+  if (existingCredentials) {
+    logger.info(`Existing authentication found for '${existingCredentials.username}'.`);
+    logger.info('Validating session...');
+
+    try {
+      await createClientFromTokens(existingCredentials);
+      logger.info('Session is valid.');
+
+      const shouldReauth = await confirm({
+        message: 'Re-authenticate anyway?',
+        default: true,
+      });
+
+      if (!shouldReauth) {
+        logger.info('Using existing credentials.');
+        return;
+      }
+    } catch {
+      logger.info('Existing session is invalid or expired. Re-authentication required.');
+    }
   }
 
   // Read from environment variables first, then prompt interactively
