@@ -10,7 +10,8 @@ https://github.com/user-attachments/assets/bf1fccac-9a08-4da1-bc0c-2c06d510fbf1
 
 ## Installation
 
-### macOS (Homebrew)
+<details>
+<summary>macOS (Homebrew)</summary>
 
 ```bash
 brew tap DamianB-BitFlipper/tap
@@ -18,7 +19,10 @@ brew install proton-drive-sync
 proton-drive-sync setup
 ```
 
-### Debian / Ubuntu
+</details>
+
+<details>
+<summary>Debian / Ubuntu</summary>
 
 Download the `.deb` package from [GitHub Releases](https://github.com/DamianB-BitFlipper/proton-drive-sync/releases/latest):
 
@@ -28,7 +32,10 @@ sudo apt install ./proton-drive-sync_*.deb
 proton-drive-sync setup
 ```
 
-### Fedora / RHEL / CentOS
+</details>
+
+<details>
+<summary>Fedora / RHEL / CentOS</summary>
 
 Download the `.rpm` package from [GitHub Releases](https://github.com/DamianB-BitFlipper/proton-drive-sync/releases/latest):
 
@@ -38,7 +45,10 @@ sudo dnf install ./proton-drive-sync-*.rpm
 proton-drive-sync setup
 ```
 
-### Other Linux
+</details>
+
+<details>
+<summary>Other Linux</summary>
 
 Download the Linux tarball from [GitHub Releases](https://github.com/DamianB-BitFlipper/proton-drive-sync/releases/latest):
 
@@ -48,11 +58,17 @@ sudo mv proton-drive-sync /usr/local/bin/
 proton-drive-sync setup
 ```
 
-### Windows
+</details>
+
+<details>
+<summary>Windows</summary>
 
 Download the `.zip` from [GitHub Releases](https://github.com/DamianB-BitFlipper/proton-drive-sync/releases/latest), extract, and add to your PATH.
 
-### Docker (WIP)
+</details>
+
+<details>
+<summary>Docker (WIP)</summary>
 
 See **[DOCKER_SETUP.md](DOCKER_SETUP.md)** for running with Docker Compose on Linux x86_64 and ARM64.
 
@@ -64,12 +80,7 @@ docker compose up -d
 docker exec -it proton-drive-sync proton-drive-sync auth
 ```
 
-## Supported Platforms
-
-- macOS
-- Linux
-- Windows (alpha)
-- Docker (WIP)
+</details>
 
 ## Usage
 
