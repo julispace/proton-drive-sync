@@ -14,7 +14,20 @@ import { chownSync, existsSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
-import { logger } from './logger.js';
+// Lazy logger import to avoid circular dependency during initialization
+// (logger.ts -> db/index.ts -> paths.ts -> logger.ts)
+let _logger: typeof import('./logger.js').logger | null = null;
+function getLogger() {
+  if (!_logger) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      _logger = require('./logger.js').logger;
+    } catch {
+      // Logger not yet initialized, ignore
+    }
+  }
+  return _logger;
+}
 
 // ============================================================================
 // Constants
@@ -114,10 +127,10 @@ export function chownToEffectiveUser(path: string): void {
     const gid = getEffectiveGid();
     try {
       chownSync(path, uid, gid);
-      logger.debug(`chown ${path} to ${uid}:${gid} (user: ${sudoUser})`);
+      getLogger()?.debug(`chown ${path} to ${uid}:${gid} (user: ${sudoUser})`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.warn(`Failed to chown ${path} to ${sudoUser}: ${message}`);
+      getLogger()?.warn(`Failed to chown ${path} to ${sudoUser}: ${message}`);
     }
   }
 }
@@ -128,7 +141,7 @@ export function chownToEffectiveUser(path: string): void {
 export function ensureDir(dir: string): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
-    logger.debug(`Created directory: ${dir}`);
+    getLogger()?.debug(`Created directory: ${dir}`);
   }
   chownToEffectiveUser(dir);
 }
