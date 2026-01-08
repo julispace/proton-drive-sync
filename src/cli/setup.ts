@@ -199,7 +199,7 @@ async function configureService(): Promise<boolean> {
         const binPath = process.execPath;
         logger.info('Restarting system service (requires sudo)...');
         const result = Bun.spawnSync(
-          ['sudo', binPath, 'service', 'load', '--install-scope', 'system'],
+          ['sudo', '-E', binPath, 'service', 'load', '--install-scope', 'system'],
           { stdin: 'inherit', stdout: 'inherit', stderr: 'inherit' }
         );
         return result.exitCode === 0;
@@ -234,7 +234,7 @@ async function configureService(): Promise<boolean> {
       const binPath = process.execPath;
       logger.info('System service requires root privileges. Requesting sudo...');
       const result = Bun.spawnSync(
-        ['sudo', binPath, 'service', 'install', '--install-scope', 'system'],
+        ['sudo', '-E', binPath, 'service', 'install', '--install-scope', 'system'],
         {
           stdin: 'inherit',
           stdout: 'inherit',
