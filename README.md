@@ -20,14 +20,12 @@ proton-drive-sync setup
 
 ### Debian / Ubuntu
 
-Download the appropriate `.deb` file for your architecture from [GitHub Releases](https://github.com/DamianB-BitFlipper/proton-drive-sync/releases).
+Download the `.deb` file for your architecture from [GitHub Releases](https://github.com/DamianB-BitFlipper/proton-drive-sync/releases).
 
 ```bash
-# For amd64:
-sudo apt install ./proton-drive-sync_amd64.deb
-
-# For arm64:
-sudo apt install ./proton-drive-sync_arm64.deb
+sudo apt update
+sudo apt install libsecret-1-0
+sudo dpkg -i <downloaded.deb>
 
 proton-drive-sync setup
 ```
