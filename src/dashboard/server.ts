@@ -119,6 +119,11 @@ let lastSentStatus: DashboardStatus | null = null;
 let lastSyncHeartbeat: number = 0;
 let lastPausedState = false;
 
+// Batching state for job events (reduces IPC flood during high-throughput sync)
+let pendingDiff: DashboardDiff = createEmptyDiff();
+let flushDiffTimer: ReturnType<typeof setTimeout> | null = null;
+const DIFF_BATCH_INTERVAL_MS = 50;
+
 // How long to wait before considering sync loop dead (90 seconds)
 const SYNC_HEARTBEAT_TIMEOUT_MS = 90_000;
 
@@ -133,6 +138,40 @@ function sendToChild(message: ParentMessage): void {
   if (!dashboardProcess?.stdin) return;
   // Bun's FileSink has a write() method that accepts strings
   dashboardProcess.stdin.write(JSON.stringify(message) + '\n');
+}
+
+/**
+ * Check if the pending diff has any changes worth sending.
+ */
+function hasDiffChanges(diff: DashboardDiff): boolean {
+  return (
+    diff.addPending.length > 0 ||
+    diff.removePending.length > 0 ||
+    diff.addProcessing.length > 0 ||
+    diff.removeProcessing.length > 0 ||
+    diff.addRecent.length > 0 ||
+    diff.addBlocked.length > 0 ||
+    diff.addRetry.length > 0 ||
+    diff.removeRetry.length > 0
+  );
+}
+
+/**
+ * Schedule a batched diff flush to the dashboard subprocess.
+ * Accumulates events for DIFF_BATCH_INTERVAL_MS before sending.
+ */
+function scheduleDiffFlush(): void {
+  if (flushDiffTimer) return; // Already scheduled
+
+  flushDiffTimer = setTimeout(() => {
+    flushDiffTimer = null;
+    if (!dashboardProcess) return;
+
+    if (hasDiffChanges(pendingDiff)) {
+      sendToChild({ type: 'job_state_diff', diff: pendingDiff });
+    }
+    pendingDiff = createEmptyDiff();
+  }, DIFF_BATCH_INTERVAL_MS);
 }
 
 /**
@@ -241,14 +280,13 @@ export function startDashboard(config: Config, dryRun = false): void {
   // Send initial config
   sendToChild({ type: 'config', config, dryRun });
 
-  // Forward job events to child process via stdin immediately
-  // Child process handles debouncing before pushing to browser
+  // Forward job events to child process via stdin with batching
+  // Events are accumulated for 50ms before sending to reduce IPC flood
   jobEventHandler = (event: JobEvent) => {
     if (!dashboardProcess) return;
 
-    const diff = createEmptyDiff();
-    accumulateEventIntoDiff(event, diff);
-    sendToChild({ type: 'job_state_diff', diff });
+    accumulateEventIntoDiff(event, pendingDiff);
+    scheduleDiffFlush();
   };
   jobEvents.on('job', jobEventHandler);
 }
@@ -257,6 +295,12 @@ export function startDashboard(config: Config, dryRun = false): void {
  * Stop the dashboard process.
  */
 export async function stopDashboard(): Promise<void> {
+  // Stop batching timer
+  if (flushDiffTimer) {
+    clearTimeout(flushDiffTimer);
+    flushDiffTimer = null;
+  }
+
   // Stop heartbeat
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
