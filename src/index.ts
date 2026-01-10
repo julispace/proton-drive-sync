@@ -2,6 +2,11 @@
  * Proton Drive Sync CLI
  */
 
+// Set NODE_ENV to production before any imports to suppress OpenPGP.js debug output.
+// OpenPGP.js enables verbose console logging when NODE_ENV === 'development', which
+// can occur if users have this set globally in their shell environment.
+process.env.NODE_ENV = 'production';
+
 import { program } from 'commander';
 import { authCommand } from './cli/auth.js';
 import {
