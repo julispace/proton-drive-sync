@@ -64,7 +64,9 @@ rpmsign --define "_gpg_name 832B348E3FF2D4F3" \
 	--addsign "${RPM_FILE}" 3<<<"${GPG_PASSPHRASE}"
 
 # Import public key to RPM keyring for verification
-gpg --armor --export 832B348E3FF2D4F3 | rpm --import /dev/stdin
+gpg --armor --export 832B348E3FF2D4F3 >/tmp/rpm-signing-key.asc
+rpm --import /tmp/rpm-signing-key.asc
+rm -f /tmp/rpm-signing-key.asc
 
 # Verify signature
 rpm -K "${RPM_FILE}"
