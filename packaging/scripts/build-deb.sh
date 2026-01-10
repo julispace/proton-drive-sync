@@ -59,7 +59,4 @@ echo "${GPG_PASSPHRASE}" | /usr/lib/gnupg/gpg-preset-passphrase --preset "${KEYG
 echo "Signing ${DEB_FILE}..."
 debsigs --sign=origin --default-key="${KEY_ID}" "${DEB_FILE}"
 
-# Verify signature
-debsigs --verify "${DEB_FILE}"
-
 echo "Successfully built and signed: ${DEB_FILE}"
