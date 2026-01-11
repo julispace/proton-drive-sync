@@ -182,3 +182,47 @@ jobs:
           repository: DamianB-BitFlipper/homebrew-tap
           event-type: update-formula
           client-payload: '{"version": "${{ github.event.release.tag_name }}", "prerelease": ${{ github.event.release.prerelease }}}'
+
+  publish-aur:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event.release.prerelease == true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Download Linux artifacts from release
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p artifacts
+          gh release download "v${VERSION}" \
+            -p "proton-drive-sync-linux-x64.tar.gz" \
+            -p "proton-drive-sync-linux-arm64.tar.gz" \
+            -D artifacts/
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Generate PKGBUILD
+        run: ./packaging/scripts/generate-aur-pkgbuild.sh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PACKAGE_NAME: proton-drive-sync-prerelease-bin
+          ARTIFACTS_DIR: artifacts
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        with:
+          pkgname: proton-drive-sync-prerelease-bin
+          pkgbuild: ./PKGBUILD
+          commit_username: ${{ vars.AUR_USERNAME }}
+          commit_email: ${{ vars.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: 'Update to v${{ steps.version.outputs.version }}'
+          ssh_keyscan_types: ed25519,rsa,ecdsa
