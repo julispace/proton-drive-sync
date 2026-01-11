@@ -22,24 +22,31 @@ proton-drive-sync setup
 
 ### Debian / Ubuntu
 
-Download the `.deb` file for your architecture from [GitHub Releases](https://github.com/DamianB-BitFlipper/proton-drive-sync/releases).
-
 ```bash
+# Add repository
+echo "deb [trusted=yes] https://repo.damianb.dev/apt/ * *" | sudo tee /etc/apt/sources.list.d/proton-drive-sync.list
 sudo apt update
-sudo apt install libsecret-1-0
-sudo dpkg -i <downloaded.deb>
+
+# Install
+sudo apt install proton-drive-sync
 
 proton-drive-sync setup
 ```
 
 ### Fedora / RHEL / CentOS
 
-Download the `.rpm` file for your architecture from [GitHub Releases](https://github.com/DamianB-BitFlipper/proton-drive-sync/releases).
-
 ```bash
-sudo dnf update
-sudo dnf install libsecret
-sudo dnf install ./<downloaded.rpm>
+# Add repository
+sudo tee /etc/yum.repos.d/proton-drive-sync.repo << 'EOF'
+[proton-drive-sync]
+name=Proton Drive Sync
+baseurl=https://repo.damianb.dev/yum/
+enabled=1
+gpgcheck=0
+EOF
+
+# Install
+sudo dnf install proton-drive-sync
 
 proton-drive-sync setup
 ```
