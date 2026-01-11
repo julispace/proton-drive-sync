@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/bf1fccac-9a08-4da1-bc0c-2c06d510fbf1" width="100" />
+  <video src="https://github.com/user-attachments/assets/bf1fccac-9a08-4da1-bc0c-2c06d510fbf1"/>
 </p>
 
 <a href="https://www.buymeacoffee.com/thebitflipper" target="_blank">
