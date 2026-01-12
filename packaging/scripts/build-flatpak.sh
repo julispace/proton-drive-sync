@@ -47,12 +47,9 @@ cp "${REPO_ROOT}/packaging/flatpak/${APP_ID}.desktop" "${BUILD_DIR}/"
 # Copy icon
 cp "${REPO_ROOT}/src/dashboard/assets/icon.svg" "${BUILD_DIR}/${APP_ID}.svg"
 
-# Build the flatpak
+# Build the flatpak and export to repo in one step
 cd "${BUILD_DIR}"
-flatpak-builder --force-clean --arch="${ARCH}" build-dir "${APP_ID}.yml"
-
-# Create a local repo and export the build
-flatpak-builder --repo=repo --arch="${ARCH}" build-dir "${APP_ID}.yml"
+flatpak-builder --force-clean --repo=repo --arch="${ARCH}" build-dir "${APP_ID}.yml"
 
 # Bundle into a single file
 flatpak build-bundle repo "../${OUTPUT_NAME}" "${APP_ID}" --arch="${ARCH}"
