@@ -64,7 +64,7 @@ function getStoredChangeToken(localPath: string): string | null {
 /**
  * Get all stored change tokens under a sync directory
  */
-function getAllStoredChangeTokens(syncDirPath: string): Map<string, string> {
+export function getAllStoredChangeTokens(syncDirPath: string): Map<string, string> {
   const pathPrefix = syncDirPath.endsWith('/') ? syncDirPath : `${syncDirPath}/`;
   const results = db
     .select()
@@ -86,10 +86,12 @@ function getAllStoredChangeTokens(syncDirPath: string): Map<string, string> {
 /**
  * Scan a directory recursively and return all files/directories with their stats.
  * Filters out paths matching exclusion patterns.
+ * @param throttleMs - Optional delay between each file stat (for background reconciliation)
  */
 export async function scanDirectory(
   watchDir: string,
-  excludePatterns: ExcludePattern[]
+  excludePatterns: ExcludePattern[],
+  throttleMs?: number
 ): Promise<Map<string, { size: number; mtime_ms: number; isDirectory: boolean; ino: number }>> {
   const results = new Map<
     string,
@@ -102,6 +104,11 @@ export async function scanDirectory(
     const entries = glob.scanSync({ cwd: watchDir, dot: true, onlyFiles: false });
 
     for (const entry of entries) {
+      // Throttle if specified (for background reconciliation)
+      if (throttleMs && throttleMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, throttleMs));
+      }
+
       const fullPath = join(watchDir, entry);
 
       // Skip excluded paths
@@ -134,7 +141,7 @@ export async function scanDirectory(
 /**
  * Compare filesystem state against stored change tokens and generate changes
  */
-function compareWithStoredChangeTokens(
+export function compareWithStoredChangeTokens(
   watchDir: string,
   fsState: Map<string, { size: number; mtime_ms: number; isDirectory: boolean; ino: number }>,
   storedTokens: Map<string, string>

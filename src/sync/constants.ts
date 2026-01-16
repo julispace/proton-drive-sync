@@ -20,6 +20,15 @@ export const STALE_PROCESSING_MS = 10 * 60 * 1000;
 /** Debounce time for file watcher events (200ms) - used for awaitWriteFinish stabilityThreshold */
 export const WATCHER_DEBOUNCE_MS = 200;
 
+/** Interval for background reconciliation (30 minutes) */
+export const BACKGROUND_RECONCILIATION_INTERVAL_MS = 30 * 60 * 1000;
+
+/** Delay between file stats during background reconciliation (~50 files/sec) */
+export const BACKGROUND_RECONCILIATION_THROTTLE_MS = 20;
+
+/** Skip background reconciliation if pending jobs exceed this threshold */
+export const BACKGROUND_RECONCILIATION_SKIP_THRESHOLD = 100;
+
 // ============================================================================
 // Retry Configuration
 // ============================================================================
