@@ -77,14 +77,25 @@ async function ensureRemotePath(
 // ============================================================================
 
 /**
- * Compute SHA1 hash of a local file
+ * Compute SHA1 hash of a local file without buffering whole file in memory
  */
 async function computeFileSha1(filePath: string): Promise<string | null> {
   try {
-    const file = Bun.file(filePath);
-    const buffer = await file.arrayBuffer();
-    const hash = createHash('sha1').update(Buffer.from(buffer)).digest('hex');
-    return hash;
+    const hash = createHash('sha1');
+    const stream = Bun.file(filePath).stream();
+    for await (const chunk of stream) {
+      // chunk can be ArrayBuffer | BufferSource | string; normalize to Buffer
+      if (typeof chunk === 'string') {
+        hash.update(chunk);
+      } else if (chunk instanceof ArrayBuffer) {
+        hash.update(Buffer.from(chunk));
+      } else if (ArrayBuffer.isView(chunk)) {
+        hash.update(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength));
+      } else {
+        hash.update(Buffer.from(chunk));
+      }
+    }
+    return hash.digest('hex');
   } catch (error) {
     logger.warn(`Failed to compute SHA1 for ${filePath}: ${error}`);
     return null;
