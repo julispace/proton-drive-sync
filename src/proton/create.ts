@@ -130,7 +130,7 @@ async function uploadFile(
   if (existingFile) {
     // Compare files using SHA1 digest if available, otherwise fall back to size+mtime
     try {
-      const remoteSha1 = existingFile.claimedDigests?.sha1;
+      const remoteSha1 = existingFile.activeRevision?.claimedDigests?.sha1;
       const localMtime = fileStat.mtime.getTime();
       const remoteMtime = existingFile.updatedAt
         ? new Date(existingFile.updatedAt).getTime()

@@ -83,38 +83,8 @@ export async function findFileByName(
   client: BaseProtonDriveClient,
   folderUid: string,
   fileName: string
-): Promise<{
-  uid: string;
-  name: string;
-  type: string;
-  size?: number;
-  updatedAt?: Date;
-  claimedDigests?: Record<string, string>;
-  activeRevision?: {
-    uid: string;
-    state: string;
-    storageSize: number;
-    claimedSize: number;
-    claimedModificationTime?: Date;
-    claimedDigests?: Record<string, string>;
-  };
-} | null> {
-  let found: {
-    uid: string;
-    name: string;
-    type: string;
-    size?: number;
-    updatedAt?: Date;
-    claimedDigests?: Record<string, string>;
-    activeRevision?: {
-      uid: string;
-      state: string;
-      storageSize: number;
-      claimedSize: number;
-      claimedModificationTime?: Date;
-      claimedDigests?: Record<string, string>;
-    };
-  } | null = null;
+): Promise<NodeData | null> {
+  let found: NodeData | null = null;
   for await (const node of client.iterateFolderChildren(folderUid)) {
     if (!found && node.ok && node.value?.name === fileName && node.value.type === 'file') {
       const nodeValue = node.value as NodeData;
@@ -125,22 +95,9 @@ export async function findFileByName(
       const updatedAt = activeRev?.claimedModificationTime ?? nodeValue.creationTime ?? undefined;
 
       found = {
-        uid: nodeValue.uid,
-        name: nodeValue.name,
-        type: nodeValue.type,
+        ...nodeValue,
         size,
         updatedAt,
-        claimedDigests: activeRev?.claimedDigests,
-        activeRevision: activeRev
-          ? {
-              uid: activeRev.uid,
-              state: activeRev.state,
-              storageSize: activeRev.storageSize,
-              claimedSize: activeRev.claimedSize,
-              claimedModificationTime: activeRev.claimedModificationTime,
-              claimedDigests: activeRev.claimedDigests,
-            }
-          : undefined,
       };
     }
   }
