@@ -136,7 +136,7 @@ async function uploadFile(
         ? new Date(existingFile.updatedAt).getTime()
         : undefined;
 
-      logger.info(
+      logger.debug(
         `Remote file check for ${fileName}: ` +
           `remoteSha1=${remoteSha1 || 'none'}, ` +
           `remoteMtime=${remoteMtime}, localMtime=${localMtime}`
@@ -145,7 +145,7 @@ async function uploadFile(
       if (remoteSha1) {
         // Compare using SHA1 digest - most reliable method
         const localSha1 = await computeFileSha1(localFilePath);
-        logger.info(`SHA1 comparison for ${fileName}: remote=${remoteSha1}, local=${localSha1}`);
+        logger.debug(`SHA1 comparison for ${fileName}: remote=${remoteSha1}, local=${localSha1}`);
 
         if (localSha1 && localSha1.toLowerCase() === remoteSha1.toLowerCase()) {
           // SHA1 matches - files are identical, skip upload
@@ -153,25 +153,12 @@ async function uploadFile(
           return existingFile.uid;
         }
 
-        // SHA1 doesn't match - only upload if local file is newer
-        if (remoteMtime !== undefined) {
-          if (localMtime <= remoteMtime) {
-            logger.info(
-              `Skipping upload for ${fileName} - SHA1 differs but local file is older or same age ` +
-                `(local: ${localMtime}, remote: ${remoteMtime})`
-            );
-            return existingFile.uid;
-          } else {
-            logger.info(
-              `Uploading new revision for ${fileName} - SHA1 differs and local file is newer ` +
-                `(local: ${localMtime}, remote: ${remoteMtime})`
-            );
-          }
-        }
+        // SHA1 differs - content is different, always upload
+        logger.info(`Uploading new revision for ${fileName} - SHA1 digests differ`);
       } else {
         // No SHA1 available, fall back to size + mtime comparison
         const remoteSize = typeof existingFile.size === 'number' ? existingFile.size : undefined;
-        logger.info(
+        logger.debug(
           `Fallback comparison for ${fileName}: ` +
             `remoteSize=${remoteSize}, localSize=${fileSize}, ` +
             `remoteMtime=${remoteMtime}, localMtime=${localMtime}`
@@ -181,20 +168,12 @@ async function uploadFile(
           const sizeMatch = remoteSize === fileSize;
           const mtimeMatch = Math.abs(remoteMtime - localMtime) <= 1000;
 
-          logger.info(
+          logger.debug(
             `Fallback check for ${fileName}: sizeMatch=${sizeMatch}, mtimeMatch=${mtimeMatch}`
           );
 
           if (sizeMatch && mtimeMatch) {
             logger.info(`Skipping upload for ${fileName} - size and mtime match`);
-            return existingFile.uid;
-          }
-
-          // If size/mtime differ, only upload if local is newer
-          if (localMtime <= remoteMtime) {
-            logger.info(
-              `Skipping upload for ${fileName} - size/mtime differ but local is older/same`
-            );
             return existingFile.uid;
           }
         }
