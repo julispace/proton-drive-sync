@@ -179,7 +179,7 @@ async function uploadFile(
   let uploadController: UploadController;
 
   if (existingFile) {
-    // Compare files using SHA1 digest if available, otherwise fall back to size+mtime
+    // Compare files using SHA1 digest - skip upload only if hashes match
     try {
       const remoteSha1 = existingFile.activeRevision?.claimedDigests?.sha1;
       const localMtime = fileStat.mtime.getTime();
@@ -207,27 +207,8 @@ async function uploadFile(
         // SHA1 differs - content is different, always upload
         logger.info(`Uploading new revision for ${fileName} - SHA1 digests differ`);
       } else {
-        // No SHA1 available, fall back to size + mtime comparison
-        const remoteSize = typeof existingFile.size === 'number' ? existingFile.size : undefined;
-        logger.debug(
-          `Fallback comparison for ${fileName}: ` +
-            `remoteSize=${remoteSize}, localSize=${fileSize}, ` +
-            `remoteMtime=${remoteMtime}, localMtime=${localMtime}`
-        );
-
-        if (remoteSize !== undefined && remoteMtime !== undefined) {
-          const sizeMatch = remoteSize === fileSize;
-          const mtimeMatch = Math.abs(remoteMtime - localMtime) <= 1000;
-
-          logger.debug(
-            `Fallback check for ${fileName}: sizeMatch=${sizeMatch}, mtimeMatch=${mtimeMatch}`
-          );
-
-          if (sizeMatch && mtimeMatch) {
-            logger.info(`Skipping upload for ${fileName} - size and mtime match`);
-            return existingFile.uid;
-          }
-        }
+        // No SHA1 available from remote - upload to ensure content is current
+        logger.debug(`No SHA1 digest available for ${fileName}, uploading`);
       }
     } catch (error) {
       // If metadata parsing fails, fall through to uploading a revision
